@@ -42,7 +42,7 @@ export default function HomePage() {
                 The Self-Hosted Data Room for Teams That Own Their Data
               </h1>
               <p className="mt-6 text-lg leading-8 text-gray-600 max-w-2xl mx-auto">
-                Leave expensive, closed SaaS behind. Get granular document access controls, dynamic watermarks, and page-by-page engagement insights on top of your existing storage.
+                Control document distribution, apply dynamic watermarks, and inspect viewer engagement on top of your existing storage without moving your files to third-party servers.
               </p>
               <div className="mt-10 flex items-center justify-center gap-x-6">
                 <Link
@@ -56,11 +56,11 @@ export default function HomePage() {
                 </Link>
               </div>
               <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-gray-500">
-                <span>✓ Open-source & self-hostable</span>
+                <span>Open-source &amp; self-hostable</span>
                 <span className="hidden sm:inline">•</span>
-                <span>✓ Your files stay in your own storage</span>
+                <span>Keep files in your own storage</span>
                 <span className="hidden sm:inline">•</span>
-                <span>✓ Easy one-command install</span>
+                <span>Docker-ready deployment</span>
               </div>
             </div>
             <div className="mt-16 sm:mt-20 mx-auto max-w-5xl px-6 lg:px-8">
@@ -86,8 +86,7 @@ export default function HomePage() {
               {/* Founder's Note Card */}
               <div className="mt-6 rounded-xl border border-gray-200/90 bg-gray-50/70 p-5 text-sm text-gray-700 shadow-sm">
                 <div className="flex items-center gap-2 font-semibold text-gray-900 mb-2">
-                  <span className="text-base">💡</span>
-                  <span>Why we built it</span>
+                  <span>Why we built Coneshare</span>
                 </div>
                 <p className="italic text-gray-600 leading-relaxed text-[13.5px]">
                   &ldquo;DocSend charges $100 a month per user just to see who opened a file. We built Coneshare so teams can keep their own storage, protect sensitive documents with dynamic watermarks, and get full viewer tracking at a tenth of the price.&rdquo;
@@ -156,7 +155,8 @@ export default function HomePage() {
           <div className="mx-auto mt-10 grid max-w-4xl grid-cols-1 gap-8 md:grid-cols-2">
             <div className="rounded-xl border border-emerald-200/80 bg-white p-6 shadow-sm">
               <h3 className="flex items-center gap-2 text-base font-semibold text-emerald-900">
-                <span className="text-emerald-600 font-bold">✓</span> Built for teams that:
+                <span className="font-mono text-xs font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">YES</span>
+                <span>Built for teams that:</span>
               </h3>
               <ul className="mt-4 space-y-2.5 text-sm text-gray-600">
                 <li className="flex items-start gap-2">
@@ -179,7 +179,8 @@ export default function HomePage() {
             </div>
             <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
               <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900">
-                <span className="text-gray-400 font-bold">✕</span> Not a good fit if you:
+                <span className="font-mono text-xs font-bold bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">NO</span>
+                <span>Not a good fit if you:</span>
               </h3>
               <ul className="mt-4 space-y-2.5 text-sm text-gray-600">
                 <li className="flex items-start gap-2">
@@ -216,7 +217,7 @@ export default function HomePage() {
           {/* Two Hero Feature Showcase Cards */}
           <div className="mt-14 grid grid-cols-1 gap-8 lg:grid-cols-2">
             
-            {/* Killer Card 1: Virtual Data Rooms */}
+            {/* Feature Card 1: Virtual Data Rooms */}
             <div className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-gray-50/40 p-6 sm:p-8 shadow-sm hover:border-gray-300 transition">
               <div>
                 <h3 className="text-2xl font-bold tracking-tight text-gray-900">
@@ -231,7 +232,7 @@ export default function HomePage() {
               <div className="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-3 text-xs">
                   <div className="flex items-center gap-2">
-                    <span className="text-gray-400">📁</span>
+                    <span className="font-mono text-[10px] font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">DIR</span>
                     <span className="font-semibold text-gray-900">Enterprise Proposal (Acme Corp)</span>
                   </div>
                 </div>
@@ -242,7 +243,7 @@ export default function HomePage() {
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-indigo-950">Procurement &amp; Legal Link</span>
                       <span className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
-                        NDA Signed ✓
+                        NDA Signed
                       </span>
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[11px] text-gray-600">
@@ -261,7 +262,7 @@ export default function HomePage() {
                     </div>
                     <div className="mt-2 flex items-center justify-between text-[11px] text-gray-500">
                       <span>Technical Architecture Deck</span>
-                      <span className="font-mono text-[10px] text-amber-700 font-medium">🔒 Pricing Locked</span>
+                      <span className="font-mono text-[10px] text-amber-700 font-medium">Pricing Locked</span>
                     </div>
                   </div>
                 </div>
@@ -277,7 +278,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Killer Card 2: Dynamic Watermarking */}
+            {/* Feature Card 2: Dynamic Watermarking */}
             <div className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-gray-50/40 p-6 sm:p-8 shadow-sm hover:border-gray-300 transition">
               <div>
                 <h3 className="text-2xl font-bold tracking-tight text-gray-900">
@@ -299,7 +300,7 @@ export default function HomePage() {
                   <div className="rounded-lg border border-dashed border-gray-250 bg-gray-50/70 p-2.5 text-[10px]">
                     <div className="flex items-center justify-between text-gray-500 pb-1.5 border-b border-gray-200/60">
                       <span className="font-medium">Standard Cloud Link</span>
-                      <span className="text-amber-600 font-bold">⚠️</span>
+                      <span className="text-amber-600 font-mono text-[9px] font-bold">UNPROTECTED</span>
                     </div>
                     <div className="mt-2 space-y-1 text-gray-400">
                       <p className="font-medium text-gray-600">Pricing Schedule</p>
@@ -323,7 +324,7 @@ export default function HomePage() {
                     <div className="relative z-0">
                       <div className="flex items-center justify-between text-emerald-950 pb-1.5 border-b border-emerald-200/60 font-medium">
                         <span>Coneshare Link</span>
-                        <span className="text-emerald-600 font-bold">✓</span>
+                        <span className="text-emerald-600 font-mono text-[9px] font-bold">PROTECTED</span>
                       </div>
                       <div className="mt-2 space-y-1 text-gray-700">
                         <p className="font-medium text-gray-900">Pricing Schedule</p>
@@ -345,7 +346,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Killer Card 3: Multi-Format Online Preview */}
+            {/* Feature Card 3: Multi-Format Online Preview */}
             <div className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-gray-50/40 p-6 sm:p-8 shadow-sm hover:border-gray-300 transition">
               <div>
                 <h3 className="text-2xl font-bold tracking-tight text-gray-900">
@@ -369,7 +370,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Killer Card 4: Page-by-Page Analytics */}
+            {/* Feature Card 4: Page-by-Page Analytics */}
             <div className="flex flex-col justify-between rounded-2xl border border-gray-200 bg-gray-50/40 p-6 sm:p-8 shadow-sm hover:border-gray-300 transition">
               <div>
                 <h3 className="text-2xl font-bold tracking-tight text-gray-900">
@@ -410,7 +411,7 @@ export default function HomePage() {
                       <div className="h-full rounded-full bg-emerald-500" style={{ width: '85%' }} />
                     </div>
                     <div className="mt-1.5 text-[10px] font-medium text-emerald-800">
-                      🔥 51% of session • High Intent Hook
+                      51% of session • Key Interest Point
                     </div>
                   </div>
 
