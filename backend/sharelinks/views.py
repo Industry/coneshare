@@ -426,6 +426,64 @@ def _resolve_qna_context_for_link(link: ShareLink, dataroom_document_id=None, da
     }
 
 
+def _verify_share_link_session_authorization(
+    link: ShareLink,
+    request,
+    is_preview: bool = False,
+    require_session: bool = True,
+    nda_status_code: int = status.HTTP_401_UNAUTHORIZED
+):
+    """
+    Verifies that the session has satisfied all required sequential protections
+    (expiration, password, email, NDA) for the given share link.
+    Returns a tuple of (error_response, auth_status).
+    If authorization fails, returns (Response, None).
+    If authorized, returns (None, auth_status).
+    """
+    if is_preview:
+        return None, {}
+
+    if link.expires_at and link.expires_at < timezone.now():
+        return Response({"message": "This link has expired."}, status=status.HTTP_410_GONE), None
+
+    authorized_links = request.session.get('authorized_share_links', {})
+    auth_status = authorized_links.get(str(link.id))
+
+    if require_session and not auth_status:
+        return Response(
+            {"message": "Authorization required to view this content."},
+            status=status.HTTP_401_UNAUTHORIZED
+        ), None
+
+    auth_status_dict = auth_status or {}
+
+    if link.password and not auth_status_dict.get('password_verified'):
+        return Response(
+            {"message": "This link is password-protected. Please enter the password to continue.", "protectionType": "password"},
+            status=status.HTTP_401_UNAUTHORIZED
+        ), None
+
+    if link.requires_email and not auth_status_dict.get('email_verified'):
+        return Response(
+            {"message": "This link requires an email address to view.", "protectionType": "email"},
+            status=status.HTTP_401_UNAUTHORIZED
+        ), None
+
+    if link.require_nda and not _is_nda_accepted(link, request, auth_status_dict):
+        return Response(
+            {
+                "message": "NDA acceptance is required to view this content." if nda_status_code == status.HTTP_401_UNAUTHORIZED else "NDA acceptance is required.",
+                "protectionType": "nda",
+                "require_nda": True,
+                "nda_text": link.nda_text,
+                "nda_version": link.nda_version,
+            },
+            status=nda_status_code
+        ), None
+
+    return None, auth_status_dict
+
+
 def _get_authorized_qna_view_session(request, link: ShareLink, view_session_id: str | None):
     # Every public Q&A endpoint authorizes its view session here, so this is the
     # single gate for the dataroom-level and link-level Q&A switches.
@@ -739,41 +797,9 @@ class ShareLinkViewDataView(APIView):
                 pass  # Token is invalid, proceed with normal checks.
 
         # --- SERVER-SIDE ACCESS CONTROL ---
-        if not is_preview:
-            # 1. Check for expiration
-            if link.expires_at and link.expires_at < timezone.now():
-                return Response({"message": "This link has expired."}, status=status.HTTP_410_GONE)
-
-            # 2. Sequential Protection Checks
-            authorized_links = request.session.get('authorized_share_links', {})
-            auth_status = authorized_links.get(str(link.id), {})
-
-            # Step 2a: Check password first
-            if link.password and not auth_status.get('password_verified'):
-                return Response(
-                    {"message": "This link is password-protected. Please enter the password to continue.", "protectionType": "password"},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-
-            # Step 2b: Check email second
-            if link.requires_email and not auth_status.get('email_verified'):
-                return Response(
-                    {"message": "This link requires an email address to view.", "protectionType": "email"},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-
-            # Step 2c: Check NDA third
-            if link.require_nda and not _is_nda_accepted(link, request, auth_status):
-                return Response(
-                    {
-                        "message": "NDA acceptance is required to view this content.",
-                        "protectionType": "nda",
-                        "require_nda": True,
-                        "nda_text": link.nda_text,
-                        "nda_version": link.nda_version
-                    },
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
+        auth_error, _ = _verify_share_link_session_authorization(link, request, is_preview=is_preview, require_session=False)
+        if auth_error:
+            return auth_error
 
         # If all checks passed (or there were none), authorize the session for page views.
         auth_status = request.session.get('authorized_share_links', {}).get(str(link.id), {})
@@ -1734,9 +1760,21 @@ class ShareLinkAcceptNDAView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        view_session_id = request.data.get('view_session_id')
         authorized_links = request.session.get('authorized_share_links', {})
-        auth_status = authorized_links.get(str(link.id), {})
+        auth_status = authorized_links.get(str(link.id)) or {}
+        if link.password and not auth_status.get('password_verified'):
+            return Response(
+                {"message": "This link is password-protected. Please enter the password to continue.", "protectionType": "password"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        if link.requires_email and not auth_status.get('email_verified'):
+            return Response(
+                {"message": "This link requires an email address to view.", "protectionType": "email"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        view_session_id = request.data.get('view_session_id')
 
         # Resolve viewer and view_session
         viewer = None
@@ -1852,6 +1890,14 @@ class ShareLinkRequestAccessView(APIView):
             return Response(
                 {"message": "This link does not require an email address."},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+        authorized_links = request.session.get('authorized_share_links', {})
+        auth_status = authorized_links.get(str(link.id)) or {}
+        if link.password and not auth_status.get('password_verified'):
+            return Response(
+                {"message": "This link is password-protected. Please enter the password to continue.", "protectionType": "password"},
+                status=status.HTTP_401_UNAUTHORIZED
             )
 
         serializer = ShareLinkEmailSerializer(data=request.data)
@@ -2053,18 +2099,9 @@ class ShareLinkPageView(APIView):
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
 
-        # A simplified check; the main /view-data/ endpoint handles the full
-        # sequential auth flow. This just ensures a session is authorized.
-        authorized_links = request.session.get('authorized_share_links', {})
-        auth_status = authorized_links.get(str(link.id))
-        if not auth_status:
-            return Response(
-                {"message": "Authorization required to view this content."},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-
-        if link.require_nda and not _is_nda_accepted(link, request, auth_status):
-            return Response({"message": "NDA acceptance is required."}, status=status.HTTP_403_FORBIDDEN)
+        auth_error, _ = _verify_share_link_session_authorization(link, request, nda_status_code=status.HTTP_403_FORBIDDEN)
+        if auth_error:
+            return auth_error
 
         document = None
         if link.dataroom:
@@ -2127,21 +2164,9 @@ class WatermarkedPageRenderView(APIView):
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
 
-        if link.expires_at and link.expires_at < timezone.now():
-            return Response({"message": "This link has expired."}, status=status.HTTP_410_GONE)
-
-        # Keep authorization behavior consistent with ShareLinkPageView:
-        # page-render endpoints require an already authorized session.
-        authorized_links = request.session.get('authorized_share_links', {})
-        auth_status = authorized_links.get(str(link.id), {})
-        if not auth_status:
-            return Response(
-                {"message": "Authorization required to view this content."},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-
-        if link.require_nda and not _is_nda_accepted(link, request, auth_status):
-            return Response({"message": "NDA acceptance is required."}, status=status.HTTP_403_FORBIDDEN)
+        auth_error, auth_status = _verify_share_link_session_authorization(link, request, nda_status_code=status.HTTP_403_FORBIDDEN)
+        if auth_error:
+            return auth_error
 
         document = None
         watermark_enabled_for_item = False
@@ -2489,27 +2514,11 @@ class ShareLinkFileDownloadView(APIView):
             except PreviewSession.DoesNotExist:
                 pass
 
-        if not is_preview:
-            if link.expires_at and link.expires_at < timezone.now():
-                return Response({"message": "This link has expired."}, status=status.HTTP_410_GONE)
-
-            authorized_links = request.session.get('authorized_share_links', {})
-            auth_status = authorized_links.get(str(link.id), {})
-
-            if link.password and not auth_status.get('password_verified'):
-                return Response(
-                    {"message": "This link is password-protected.", "protectionType": "password"},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-
-            if link.requires_email and not auth_status.get('email_verified'):
-                return Response(
-                    {"message": "This link requires an email address to view.", "protectionType": "email"},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-
-            if link.require_nda and not _is_nda_accepted(link, request, auth_status):
-                return Response({"message": "NDA acceptance is required."}, status=status.HTTP_403_FORBIDDEN)
+        auth_error, _ = _verify_share_link_session_authorization(
+            link, request, is_preview=is_preview, require_session=False, nda_status_code=status.HTTP_403_FORBIDDEN
+        )
+        if auth_error:
+            return auth_error
 
         document = None
         allow_download = False
@@ -2758,27 +2767,11 @@ class DataroomFolderDownloadView(APIView):
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
 
-        if not is_preview:
-            if link.expires_at and link.expires_at < timezone.now():
-                return Response({"message": "This link has expired."}, status=status.HTTP_410_GONE)
-
-            authorized_links = request.session.get('authorized_share_links', {})
-            auth_status = authorized_links.get(str(link.id), {})
-
-            if link.password and not auth_status.get('password_verified'):
-                return Response(
-                    {"message": "This link is password-protected.", "protectionType": "password"},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-
-            if link.requires_email and not auth_status.get('email_verified'):
-                return Response(
-                    {"message": "This link requires an email address to view.", "protectionType": "email"},
-                    status=status.HTTP_401_UNAUTHORIZED
-                )
-
-            if link.require_nda and not _is_nda_accepted(link, request, auth_status):
-                return Response({"message": "NDA acceptance is required."}, status=status.HTTP_403_FORBIDDEN)
+        auth_error, _ = _verify_share_link_session_authorization(
+            link, request, is_preview=is_preview, require_session=False, nda_status_code=status.HTTP_403_FORBIDDEN
+        )
+        if auth_error:
+            return auth_error
 
         if not link.dataroom:
             return Response({"message": "This link is not for a dataroom."}, status=status.HTTP_400_BAD_REQUEST)

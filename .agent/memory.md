@@ -364,3 +364,9 @@ COMPOSE_PROJECT_NAME=coneshare docker-compose exec frontend npm test -- --run sr
 - **Category:** Architecture Choice / Gotcha
 - **Context/Implication:** Added 0-delay client-side Markdown previewing and reading depth analytics. Standard Python `mimetypes.guess_type` returns `(None, None)` for `.md`/`.markdown`, which originally forced Markdown files into `download_only`. Additionally, custom DOMPurify hooks must explicitly preserve `#` internal fragment anchors without setting `target="_blank"` while validating outbound links with `isSafeUrl`.
 - **Resolution/Action:** Created `MarkdownRenderer` with synchronous lifecycle bypassing Celery tasks; explicitly resolved `.md`/`.markdown` extensions to `text/markdown` in `normalize_content_type`; built `MarkdownViewer.jsx` with copy protection, watermark overlay, throttled scroll percentage tracking (`scroll_percentage`), and smooth internal anchor scrolling. Registered test in `vitest.whitelist.json`.
+
+### 2026-10-12 Session Entry
+- **Category:** Architecture Choice / Gotcha
+- **Context/Implication:** Public share link page image and watermark render endpoints (`ShareLinkPageView`, `WatermarkedPageRenderView`) previously only verified basic session dictionary presence (`if not auth_status`), rather than enforcing sequential credential verification (`password_verified`, `email_verified`, NDA). This created an inconsistency with `/view-data/` when multiple link protections (e.g. password + email/NDA) were combined.
+- **Resolution/Action:** Extracted sequential authorization checks (expiration -> password -> email -> NDA) into a unified helper `_verify_share_link_session_authorization`, enforced it across page rendering, watermark, and download views, and aligned pre-check guards in `/request-access/` and `/accept-nda/`. Added regression test cases in `backend/tests/sharelinks/test_views.py`.
+
