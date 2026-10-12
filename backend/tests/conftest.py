@@ -1,8 +1,9 @@
 import os
 import pytest
 from django.contrib.auth import get_user_model
-from django.core.files.uploadedfile import SimpleUploadedFile
+from rest_framework.settings import api_settings
 from rest_framework.test import APIClient
+from rest_framework.views import APIView
 
 from compile_po import BASE_LOCALE, make_mo
 from core.models import Organization
@@ -26,13 +27,21 @@ def ensure_mo_catalogs_compiled():
                 make_mo(po_path, mo_path)
 
 
-
 @pytest.fixture(autouse=True)
 def disable_drf_rate_limiting(settings):
     """Disable DRF throttling during pytest runs to prevent 429 Too Many Requests in large test suites."""
     rf_settings = settings.REST_FRAMEWORK.copy()
     rf_settings['DEFAULT_THROTTLE_CLASSES'] = []
+    rf_rates = rf_settings.get('DEFAULT_THROTTLE_RATES', {}).copy()
+    rf_rates['anon'] = None
+    rf_rates['user'] = None
+    rf_settings['DEFAULT_THROTTLE_RATES'] = rf_rates
     settings.REST_FRAMEWORK = rf_settings
+
+    api_settings.DEFAULT_THROTTLE_CLASSES = []
+    api_settings.DEFAULT_THROTTLE_RATES['anon'] = None
+    api_settings.DEFAULT_THROTTLE_RATES['user'] = None
+    APIView.throttle_classes = []
 
 
 @pytest.fixture(autouse=True)

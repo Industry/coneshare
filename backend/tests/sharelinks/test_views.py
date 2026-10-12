@@ -2474,6 +2474,105 @@ class TestShareLinkPageView:
         response = authorized_client.get(url)
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
+    @patch('sharelinks.views.fileserver_client.generate_download_url')
+    def test_get_page_requires_password_verification_when_email_configured(self, mock_fs_download_url, public_client, share_link_with_password_and_email, document_with_pages):
+        """
+        Test that accessing a document page on a password-protected link requires
+        prior password verification, even when email access has been requested.
+        """
+        share_link_with_password_and_email.document = document_with_pages
+        share_link_with_password_and_email.save()
+        mock_fs_download_url.return_value = "http://test.coneshare.com/files/download/some-token"
+
+        # Request access with email without verifying password
+        request_url = f'/api/v1/links/{share_link_with_password_and_email.slug}/request-access/'
+        public_client.post(request_url, {'email': 'viewer@example.com'})
+
+        # Page endpoint requires password verification
+        page_url = f'/api/v1/links/{share_link_with_password_and_email.slug}/page/1/'
+        response_page = public_client.get(page_url)
+        assert response_page.status_code == status.HTTP_401_UNAUTHORIZED
+
+    @patch('sharelinks.views.fileserver_client.generate_download_url')
+    def test_get_page_requires_password_verification_when_nda_configured(self, mock_fs_download_url, public_client, user, document_with_pages):
+        """
+        Test that accessing a document page on a password-protected link requires
+        prior password verification, even if an NDA acceptance has been submitted.
+        """
+        link = ShareLink.objects.create(
+            document=document_with_pages,
+            created_by=user,
+            password="secretpassword",
+            require_nda=True,
+            nda_text="Confidential terms.",
+            nda_version=1
+        )
+        mock_fs_download_url.return_value = "http://test.coneshare.com/files/download/some-token"
+
+        accept_url = f'/api/v1/links/{link.slug}/accept-nda/'
+        public_client.post(accept_url, {})
+
+        # Access without password verification must be rejected
+        page_url = f'/api/v1/links/{link.slug}/page/1/'
+        response_page = public_client.get(page_url)
+        assert response_page.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_request_access_requires_password_verification_when_password_configured(self, public_client, share_link_with_password_and_email):
+        """
+        Test that submitting email on request-access requires prior password verification
+        when the share link is password-protected.
+        """
+        request_url = f'/api/v1/links/{share_link_with_password_and_email.slug}/request-access/'
+        response = public_client.post(request_url, {'email': 'viewer@example.com'})
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.data.get('protectionType') == 'password'
+
+    def test_accept_nda_requires_password_verification_when_password_configured(self, public_client, user, document):
+        """
+        Test that accepting an NDA requires prior password verification when the link has a password.
+        """
+        link = ShareLink.objects.create(
+            document=document,
+            created_by=user,
+            password="secretpassword",
+            require_nda=True,
+            nda_text="Confidential terms.",
+            nda_version=1
+        )
+        accept_url = f'/api/v1/links/{link.slug}/accept-nda/'
+        response = public_client.post(accept_url, {})
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.data.get('protectionType') == 'password'
+
+    def test_accept_nda_requires_email_verification_when_email_configured(self, public_client, user, document):
+        """
+        Test that accepting an NDA requires email verification when the link requires an email.
+        """
+        link = ShareLink.objects.create(
+            document=document,
+            created_by=user,
+            requires_email=True,
+            require_nda=True,
+            nda_text="Confidential terms.",
+            nda_version=1
+        )
+        accept_url = f'/api/v1/links/{link.slug}/accept-nda/'
+        response = public_client.post(accept_url, {})
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.data.get('protectionType') == 'email'
+
+        # After verifying email, accepting NDA succeeds
+        session = public_client.session
+        session['authorized_share_links'] = {
+            str(link.id): {
+                'email_verified': True,
+                'viewer_email': 'viewer@example.com'
+            }
+        }
+        session.save()
+        response_after = public_client.post(accept_url, {})
+        assert response_after.status_code == status.HTTP_200_OK
+
 
 @pytest.mark.django_db
 class TestWatermarkingViews:
@@ -3000,6 +3099,27 @@ class TestWatermarkingViews:
         response = public_client.get(url)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         assert response.data['message'] == 'Authorization required to view this content.'
+
+    @patch('sharelinks.views.requests.get')
+    @patch('sharelinks.views.fileserver_client.generate_download_url')
+    def test_render_watermarked_page_requires_password_verification_when_email_configured(self, mock_fs_download, mock_requests_get, public_client, watermarked_link):
+        """
+        Test that rendering a watermarked page on a password-protected link requires
+        password verification even when email capture is configured.
+        """
+        watermarked_link.password = "secretpassword"
+        watermarked_link.requires_email = True
+        watermarked_link.requires_email_verification = False
+        watermarked_link.save()
+
+        # Request access with email without verifying password
+        request_url = f'/api/v1/links/{watermarked_link.slug}/request-access/'
+        public_client.post(request_url, {'email': 'viewer@example.com'})
+
+        # Render watermarked page requires password verification
+        render_url = f'/api/v1/links/{watermarked_link.slug}/render-page/1/'
+        response = public_client.get(render_url)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     @pytest.fixture
     def dataroom_with_watermarked_link(self, dataroom, user, document_with_page):
