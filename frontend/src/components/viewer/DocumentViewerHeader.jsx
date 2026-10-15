@@ -40,7 +40,9 @@ export function DocumentViewerHeader({
           className="flex items-center gap-2 rounded-md font-semibold hover:opacity-80 transition-opacity"
           style={{ color: 'var(--viewer-primary, #111827)' }}
         >
-          <img src={brandLogoUrl} alt={`${brandName} logo`} className="h-6 w-6 object-contain" />
+          {brandLogoUrl && (
+            <img src={brandLogoUrl} alt={`${brandName} logo`} className="h-6 w-6 object-contain" />
+          )}
           <span className="truncate max-w-[120px] sm:max-w-[200px] text-sm sm:text-base">{brandName}</span>
         </a>
 

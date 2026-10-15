@@ -16,7 +16,9 @@ function LogoHeader({ brandLogoUrl, brandName }) {
   return (
     <div className="flex flex-col items-center justify-center mb-8">
       <div className="flex items-center gap-2">
-        <img src={brandLogoUrl} alt={`${brandName} Logo`} className="h-8 w-8 object-contain" />
+        {brandLogoUrl && (
+          <img src={brandLogoUrl} alt={`${brandName} Logo`} className="h-8 w-8 object-contain" />
+        )}
         <span className="text-xl font-bold tracking-tight text-gray-900">{brandName}</span>
       </div>
       <p className="mt-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
@@ -85,6 +87,8 @@ export function EmailForm({
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [localRequiresConfirmation, setLocalRequiresConfirmation] = useState(requiresConfirmation);
 
+  const resolvedLogoUrl = publicMeta?.resolved_brand_logo_url || brandLogoUrl;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -119,7 +123,7 @@ export function EmailForm({
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
         <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg border border-gray-100/80 animate-fadeIn">
-          <LogoHeader brandLogoUrl={brandLogoUrl} brandName={brandName} />
+          <LogoHeader brandLogoUrl={resolvedLogoUrl} brandName={brandName} />
 
           {/* Section 2: Owner & Document Info */}
           <AccessOwnerCard publicMeta={publicMeta} />
@@ -153,7 +157,7 @@ export function EmailForm({
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
         <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-lg border border-gray-100/80 animate-fadeIn">
-          <LogoHeader brandLogoUrl={brandLogoUrl} brandName={brandName} />
+          <LogoHeader brandLogoUrl={resolvedLogoUrl} brandName={brandName} />
 
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600">
             <Mail className="h-6 w-6" />
@@ -172,7 +176,7 @@ export function EmailForm({
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg border border-gray-100/80 animate-fadeIn">
-        <LogoHeader brandLogoUrl={brandLogoUrl} brandName={brandName} />
+        <LogoHeader brandLogoUrl={resolvedLogoUrl} brandName={brandName} />
 
         {/* Section 2: Owner & Document Info */}
         <AccessOwnerCard publicMeta={publicMeta} />

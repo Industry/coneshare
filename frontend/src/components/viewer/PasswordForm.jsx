@@ -16,6 +16,8 @@ export function PasswordForm({ slug, onSuccess, publicMeta = null }) {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  const resolvedLogoUrl = publicMeta?.resolved_brand_logo_url || brandLogoUrl;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -36,7 +38,9 @@ export function PasswordForm({ slug, onSuccess, publicMeta = null }) {
         {/* Section 1: Logo */}
         <div className="flex flex-col items-center justify-center mb-8">
           <div className="flex items-center gap-2">
-            <img src={brandLogoUrl} alt={`${brandName} Logo`} className="h-8 w-8 object-contain" />
+            {resolvedLogoUrl && (
+              <img src={resolvedLogoUrl} alt={`${brandName} Logo`} className="h-8 w-8 object-contain" />
+            )}
             <span className="text-xl font-bold tracking-tight text-gray-900">{brandName}</span>
           </div>
           <p className="mt-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">

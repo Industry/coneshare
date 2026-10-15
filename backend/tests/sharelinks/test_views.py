@@ -1491,6 +1491,35 @@ class TestDataroomVisitTracking:
         assert ctx["name"] == dataroom.name
         assert ctx["parent_folder_id"] == str(folder.id)
         assert ctx["brand_primary_color"] == dataroom.brand_primary_color
+        assert ctx["banner_mode"] == "single"
+        assert ctx["banner_images"] == []
+        assert ctx["logo_mode"] == "org"
+        assert "resolved_brand_logo_url" in ctx
+
+    def test_get_dataroom_root_link_returns_banner_and_logo_data(self, public_client, user, dataroom):
+        from datarooms.models import DataroomBannerImage
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        dataroom.banner_mode = "gallery"
+        dataroom.logo_mode = "dataroom"
+        dataroom.brand_logo_override = SimpleUploadedFile("override.png", b"testpngbytes", content_type="image/png")
+        dataroom.save()
+
+        img = SimpleUploadedFile("g1.png", b"testimg", content_type="image/png")
+        DataroomBannerImage.objects.create(dataroom=dataroom, image=img, caption="Gallery 1", position=0)
+
+        link = ShareLink.objects.create(dataroom=dataroom, created_by=user)
+        url = f"/api/v1/links/{link.slug}/view-data/"
+        response = public_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["banner_mode"] == "gallery"
+        assert len(data["banner_images"]) == 1
+        assert data["banner_images"][0]["caption"] == "Gallery 1"
+        assert data["logo_mode"] == "dataroom"
+        assert data["brand_logo_override"] is not None
+        assert data["resolved_brand_logo_url"] is not None
 
     def test_get_standalone_document_link_does_not_return_dataroom_context(self, public_client, user, document):
         """
@@ -1807,6 +1836,41 @@ class TestShareLinkPasswordProtection:
     def test_public_meta_for_unknown_slug_returns_404(self, public_client):
         response = public_client.get('/api/v1/links/non-existent/public-meta/')
         assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_public_meta_dataroom_logo_mode_and_resolved_logo(self, public_client, user, dataroom):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        # Case 1: default 'org', organization has logo
+        org = user.organization
+        org.brand_logo = SimpleUploadedFile("org_logo.png", b"orgbytes", content_type="image/png")
+        org.save()
+
+        link = ShareLink.objects.create(dataroom=dataroom, created_by=user)
+        res = public_client.get(f'/api/v1/links/{link.slug}/public-meta/')
+        assert res.status_code == status.HTTP_200_OK
+        data = res.json()
+        assert data["logo_mode"] == "org"
+        assert data["resolved_brand_logo_url"] is not None
+
+        # Case 2: 'dataroom', dataroom has custom logo
+        dataroom.logo_mode = "dataroom"
+        dataroom.brand_logo_override = SimpleUploadedFile("room_logo.png", b"testpngbytes", content_type="image/png")
+        dataroom.save()
+
+        res2 = public_client.get(f'/api/v1/links/{link.slug}/public-meta/')
+        assert res2.status_code == status.HTTP_200_OK
+        data2 = res2.json()
+        assert data2["logo_mode"] == "dataroom"
+        assert data2["resolved_brand_logo_url"].endswith(".png")
+
+        # Case 3: 'dataroom' mode without custom logo falls back to org brand logo
+        dataroom.brand_logo_override = None
+        dataroom.save()
+
+        res3 = public_client.get(f'/api/v1/links/{link.slug}/public-meta/')
+        assert res3.status_code == status.HTTP_200_OK
+        data3 = res3.json()
+        assert data3["resolved_brand_logo_url"] is not None
 
 
 @pytest.mark.django_db

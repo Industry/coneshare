@@ -83,6 +83,42 @@ describe('DataroomViewer', () => {
     expect(bannerImg).toHaveClass('h-40', 'w-full', 'object-cover', 'md:h-56');
   });
 
+  it('omits banner entirely when banner_mode is none', () => {
+    const bannerData = {
+      ...mockDataroomData,
+      link_type: 'dataroom',
+      banner_mode: 'none',
+      branding_banner: 'http://localhost/banner.png',
+    };
+    render(
+      <MemoryRouter initialEntries={['/view/test-slug']}>
+        <DataroomViewer data={bannerData} slug="test-slug" />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByAltText(/banner/i)).not.toBeInTheDocument();
+  });
+
+  it('renders interactive banner gallery when banner_mode is gallery', () => {
+    const galleryData = {
+      ...mockDataroomData,
+      link_type: 'dataroom',
+      banner_mode: 'gallery',
+      branding_banner_images: [
+        { id: 'b1', image: 'http://localhost/gal1.png', caption: 'Gallery Slide 1' },
+        { id: 'b2', image: 'http://localhost/gal2.png', caption: 'Gallery Slide 2' },
+      ],
+    };
+    render(
+      <MemoryRouter initialEntries={['/view/test-slug']}>
+        <DataroomViewer data={galleryData} slug="test-slug" />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('region', { name: 'Interactive banner gallery' })).toBeInTheDocument();
+    expect(screen.getAllByText('Gallery Slide 1')[0]).toBeInTheDocument();
+  });
+
   it('navigates into a sub-folder and displays its contents', async () => {
     api.getShareLinkViewData.mockResolvedValueOnce({
       data: {

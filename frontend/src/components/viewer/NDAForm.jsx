@@ -15,6 +15,8 @@ export function NDAForm({ slug, onSuccess, publicMeta = null }) {
   const [agreed, setAgreed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  const resolvedLogoUrl = publicMeta?.resolved_brand_logo_url || brandLogoUrl;
+
   const ndaText = publicMeta?.nda_text || 'Non-Disclosure Agreement terms go here.';
 
   const handleSubmit = async (e) => {
@@ -48,7 +50,9 @@ export function NDAForm({ slug, onSuccess, publicMeta = null }) {
         {/* Section 1: Logo */}
         <div className="flex flex-col items-center justify-center mb-6">
           <div className="flex items-center gap-2">
-            <img src={brandLogoUrl} alt={`${brandName} Logo`} className="h-8 w-8 object-contain" />
+            {resolvedLogoUrl && (
+              <img src={resolvedLogoUrl} alt={`${brandName} Logo`} className="h-8 w-8 object-contain" />
+            )}
             <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">{brandName}</span>
           </div>
           <p className="mt-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-wider">

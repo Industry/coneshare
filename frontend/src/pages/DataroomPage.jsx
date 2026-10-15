@@ -7,7 +7,7 @@ import { ShareIcon, Star, ArrowLeft, ChevronDown, FolderUp, Plus, Loader2, Alert
 import { toast } from 'sonner';
 import { formatBytes } from '../lib/formatters';
 import { isDataroomOwner, isDataroomCollaborator } from '../utils/formatters';
-import { getDataroom, addContentToDataroom, createDataroomFolder, moveDataroomContent, getDataroomFolderContents, getShareLinksForDataroom, deleteShareLink, getDataroomViewSessions, getDataroomStats, removeContentFromDataroom, updateDataroomFolder, updateDataroomDocument, updateDataroomBranding, reorderDataroomItems, deleteDataroom, ensureDataroomFolderPaths, uploadDataroomDocument, upgradeDataroomStorage } from '../services/api';
+import { getDataroom, addContentToDataroom, createDataroomFolder, moveDataroomContent, getDataroomFolderContents, getShareLinksForDataroom, deleteShareLink, getDataroomViewSessions, getDataroomStats, removeContentFromDataroom, updateDataroomFolder, updateDataroomDocument, updateDataroomBranding, reorderDataroomItems, deleteDataroom, ensureDataroomFolderPaths, uploadDataroomDocument, upgradeDataroomStorage, getDataroomBannerImages } from '../services/api';
 import { useBreadcrumb } from '../components/layout/BreadcrumbProvider';
 import { useUpload } from '../contexts/UploadProvider';
 import { useUser } from '../contexts/UserProvider';
@@ -30,6 +30,8 @@ import { ViewSessionsTable } from '../components/documents/ViewSessionsTable';
 import { ManagePermissionsDialog } from '../components/datarooms/ManagePermissionsDialog';
 import { CollaboratorsAvatarGroup } from '../components/datarooms/CollaboratorsAvatarGroup';
 import { TransferOwnershipDialog } from '../components/datarooms/TransferOwnershipDialog';
+import { DataroomBannerGalleryManager } from '../components/datarooms/DataroomBannerGalleryManager';
+import { DataroomBannerGallery } from '../components/viewer/DataroomBannerGallery';
 import { RenameItemDialog } from '../components/dialogs/RenameItemDialog';
 import { Skeleton } from '../components/ui/Skeleton';
 import { Input } from '../components/ui/Input';
@@ -107,6 +109,17 @@ export function DataroomPage() {
   const [brandingBannerFile, setBrandingBannerFile] = useState(null);
   const [removeBrandingBanner, setRemoveBrandingBanner] = useState(false);
   const [brandingPreviewUrl, setBrandingPreviewUrl] = useState(null);
+  const [logoMode, setLogoMode] = useState('org');
+  const [brandLogoOverrideFile, setBrandLogoOverrideFile] = useState(null);
+  const [removeBrandLogoOverride, setRemoveBrandLogoOverride] = useState(false);
+  const [brandLogoPreviewUrl, setBrandLogoPreviewUrl] = useState(null);
+  const [isSavingLogo, setIsSavingLogo] = useState(false);
+  const logoFileInputRef = useRef(null);
+
+  const [bannerMode, setBannerMode] = useState('single');
+  const [galleryImages, setGalleryImages] = useState([]);
+  const [hasFetchedGallery, setHasFetchedGallery] = useState(false);
+  const [isGalleryImagesLoading, setIsGalleryImagesLoading] = useState(false);
   const [isSavingGeneral, setIsSavingGeneral] = useState(false);
   const [isSavingBanner, setIsSavingBanner] = useState(false);
   const [isSavingColors, setIsSavingColors] = useState(false);
@@ -412,6 +425,29 @@ export function DataroomPage() {
     }
   }, [dataroom, currentDataroomFolder, setBreadcrumbData, handleBreadcrumbNavigate]);
 
+  const fetchGalleryImages = useCallback(async () => {
+    setIsGalleryImagesLoading(true);
+    try {
+      const response = await getDataroomBannerImages(dataroomId);
+      setGalleryImages(response?.data || []);
+      setHasFetchedGallery(true);
+    } catch (error) {
+      console.error('Failed to load gallery images', error);
+    } finally {
+      setIsGalleryImagesLoading(false);
+    }
+  }, [dataroomId]);
+
+  useEffect(() => {
+    setHasFetchedGallery(false);
+  }, [dataroomId]);
+
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      fetchGalleryImages();
+    }
+  }, [activeTab, fetchGalleryImages]);
+
   useEffect(() => {
     if (!dataroom) return;
     setDataroomName(dataroom.name || '');
@@ -423,10 +459,19 @@ export function DataroomPage() {
     setBrandingBannerFile(null);
     setRemoveBrandingBanner(false);
     setBrandingPreviewUrl(null);
+    const rawLogoMode = dataroom.logo_mode || dataroom.logoMode || 'org';
+    setLogoMode(rawLogoMode === 'none' ? 'org' : rawLogoMode);
+    setBrandLogoOverrideFile(null);
+    setRemoveBrandLogoOverride(false);
+    setBrandLogoPreviewUrl(null);
+    setBannerMode(dataroom.banner_mode || dataroom.bannerMode || 'single');
+    if (!hasFetchedGallery && dataroom.banner_images && Array.isArray(dataroom.banner_images)) {
+      setGalleryImages(dataroom.banner_images);
+    }
     setShowFileIndex(Boolean(dataroom.show_file_index));
     setEnableQna(dataroom.enable_qna !== false);
     setStorageQuotaMb(dataroom.storage_quota_mb ?? 0);
-  }, [dataroom]);
+  }, [dataroom, hasFetchedGallery]);
 
   useEffect(() => {
     if (!brandingBannerFile) {
@@ -437,6 +482,16 @@ export function DataroomPage() {
     setBrandingPreviewUrl(objUrl);
     return () => URL.revokeObjectURL(objUrl);
   }, [brandingBannerFile]);
+
+  useEffect(() => {
+    if (!brandLogoOverrideFile) {
+      setBrandLogoPreviewUrl(null);
+      return;
+    }
+    const objUrl = URL.createObjectURL(brandLogoOverrideFile);
+    setBrandLogoPreviewUrl(objUrl);
+    return () => URL.revokeObjectURL(objUrl);
+  }, [brandLogoOverrideFile]);
 
   const handleAddContent = async ({ document_ids, folder_ids }) => {
     try {
@@ -638,12 +693,76 @@ export function DataroomPage() {
     }
   };
 
+  const handleSaveLogo = async () => {
+    setIsSavingLogo(true);
+    try {
+      const response = await updateDataroomBranding(dataroomId, {
+        logoMode,
+        brandLogoOverrideFile,
+        removeBrandLogoOverride,
+      });
+      setDataroom(response.data);
+      setBrandLogoOverrideFile(null);
+      setRemoveBrandLogoOverride(false);
+      toast.success(t('datarooms.logoUpdated', { defaultValue: 'Logo settings updated.' }));
+    } catch (error) {
+      // Error toast handled by interceptor
+    } finally {
+      setIsSavingLogo(false);
+    }
+  };
+
+  const handleLogoModeChange = async (newMode) => {
+    if (newMode === logoMode) return;
+    setLogoMode(newMode);
+    if (newMode !== 'dataroom') {
+      setIsSavingLogo(true);
+      try {
+        const response = await updateDataroomBranding(dataroomId, {
+          logoMode: newMode,
+        });
+        if (response?.data && Object.keys(response.data).length > 0) {
+          setDataroom(response.data);
+        }
+        setBrandLogoOverrideFile(null);
+        setRemoveBrandLogoOverride(false);
+        toast.success(t('datarooms.logoUpdated', { defaultValue: 'Logo settings updated.' }));
+      } catch (error) {
+        const fallbackMode = dataroom?.logo_mode || 'org';
+        setLogoMode(fallbackMode === 'none' ? 'org' : fallbackMode);
+      } finally {
+        setIsSavingLogo(false);
+      }
+    }
+  };
+
+  const handleBannerModeChange = async (newMode) => {
+    if (newMode === bannerMode) return;
+    const oldMode = bannerMode;
+    setBannerMode(newMode);
+    try {
+      const response = await updateDataroomBranding(dataroomId, {
+        bannerMode: newMode,
+      });
+      if (response?.data && Object.keys(response.data).length > 0) {
+        setDataroom(response.data);
+      }
+      toast.success(t('datarooms.bannerUpdated', { defaultValue: 'Banner updated.' }));
+      if (newMode === 'gallery') {
+        fetchGalleryImages();
+      }
+    } catch (error) {
+      setBannerMode(oldMode);
+    }
+  };
+
   const handleSaveBanner = async () => {
     setIsSavingBanner(true);
     try {
       const response = await updateDataroomBranding(dataroomId, {
         bannerFile: brandingBannerFile,
         removeBanner: removeBrandingBanner,
+        bannerMode,
       });
       setDataroom(response.data);
       setBrandingBannerFile(null);
@@ -855,6 +974,10 @@ export function DataroomPage() {
     : 0;
   const isQuotaDirty = isValidIntegerQuota && activeQuotaMb !== currentQuotaMb;
 
+  const effectiveBannerImages = hasFetchedGallery ? galleryImages : (dataroom?.banner_images || []);
+  const hasBanner = (bannerMode === 'single' && Boolean(dataroom?.branding_banner)) ||
+    (bannerMode === 'gallery' && effectiveBannerImages.length > 0);
+
   const dataroomThemeStyle = {
     '--dataroom-primary': dataroom.brand_primary_color || '#111827',
     '--dataroom-secondary': dataroom.brand_secondary_color || '#4b5563',
@@ -965,14 +1088,16 @@ export function DataroomPage() {
         </div>
       </header>
 
-      {dataroom.branding_banner && (
-        <section className="mb-6 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
-          <img
-            src={dataroom.branding_banner}
-            alt={`${dataroom.name} banner`}
-            className="h-40 w-full object-cover md:h-56"
+      {hasBanner && (
+        <div className="mb-6 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+          <DataroomBannerGallery
+            images={effectiveBannerImages}
+            bannerMode={bannerMode}
+            singleBannerUrl={dataroom?.branding_banner}
+            dataroomName={dataroom?.name || ''}
+            isRootFolder={!currentFolderId}
           />
-        </section>
+        </div>
       )}
 
       <Tabs value={activeTab} onValueChange={(tab) => updateSearchParam('tab', tab)} className="mt-4">
@@ -1118,83 +1243,259 @@ export function DataroomPage() {
               </div>
             </div>
 
+            {/* Logo Settings Section */}
             <div className="pb-6 border-b border-gray-200 dark:border-gray-800">
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">{t('datarooms.bannerImage')}</h3>
-                <Button size="sm" onClick={handleSaveBanner} disabled={isSavingBanner}>
-                  {isSavingBanner ? t('common.saving') : t('common.save')}
-                </Button>
+                <h3 className="text-sm font-semibold">{t('datarooms.logoMode')}</h3>
+                {logoMode === 'dataroom' && (
+                  <Button size="sm" onClick={handleSaveLogo} disabled={isSavingLogo}>
+                    {isSavingLogo && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+                    {isSavingLogo ? t('common.saving') : t('common.save')}
+                  </Button>
+                )}
               </div>
               <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">
-                {t('datarooms.bannerDescription')}
+                {t('datarooms.logoModeDescription')}
               </p>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <input
-                    ref={bannerFileInputRef}
-                    id="dataroom-banner"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      setBrandingBannerFile(file);
-                      if (file) setRemoveBrandingBanner(false);
-                    }}
-                  />
-                  <div className="mt-2 flex items-center gap-3">
-                    <Button
+
+              {/* Mode Toggle Buttons */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {[
+                  { value: 'org', label: t('datarooms.logoModeOrg') },
+                  { value: 'dataroom', label: t('datarooms.logoModeDataroom') },
+                ].map((option) => {
+                  const isSelected = logoMode === option.value;
+                  return (
+                    <button
+                      key={option.value}
                       type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => bannerFileInputRef.current?.click()}
+                      onClick={() => handleLogoModeChange(option.value)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                          : 'bg-background hover:bg-muted text-foreground border-border'
+                      }`}
                     >
-                      {t('datarooms.uploadBanner')}
-                    </Button>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {brandingBannerFile ? brandingBannerFile.name : t('datarooms.noFileSelected')}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    {t('datarooms.bannerRecommendation')}
-                  </p>
-                  {(dataroom.branding_banner || brandingBannerFile) && (
-                    <div className="mt-3 flex gap-2">
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Custom Logo Upload card when logoMode === 'dataroom' */}
+              {logoMode === 'dataroom' && (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 rounded-xl border border-border p-4 bg-muted/20">
+                  <div>
+                    <input
+                      ref={logoFileInputRef}
+                      id="dataroom-custom-logo"
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        if (file) {
+                          if (file.size > 2 * 1024 * 1024) {
+                            toast.error(t('datarooms.logoSizeLimitExceeded', { defaultValue: 'Logo file size cannot exceed 2 MB.' }));
+                            return;
+                          }
+                          setBrandLogoOverrideFile(file);
+                          setRemoveBrandLogoOverride(false);
+                        }
+                      }}
+                    />
+                    <div className="flex items-center gap-3">
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        onClick={() => {
-                          setBrandingBannerFile(null);
-                          setRemoveBrandingBanner(true);
-                        }}
+                        onClick={() => logoFileInputRef.current?.click()}
                       >
-                        {t('datarooms.removeBanner')}
+                        {brandLogoOverrideFile || (!removeBrandLogoOverride && dataroom?.brand_logo_override)
+                          ? t('datarooms.replaceLogo')
+                          : t('datarooms.uploadLogo')}
                       </Button>
+                      <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                        {brandLogoOverrideFile
+                          ? brandLogoOverrideFile.name
+                          : !removeBrandLogoOverride && dataroom?.brand_logo_override
+                          ? t('common.currentFile', { defaultValue: 'Current logo set' })
+                          : t('datarooms.noFileSelected')}
+                      </span>
                     </div>
-                  )}
-                </div>
-                <div>
-                  <Label>{t('datarooms.preview')}</Label>
-                  <div className="mt-2 overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
-                    {removeBrandingBanner ? (
-                      <div className="flex h-28 items-center justify-center text-xs text-gray-500">
-                        {t('datarooms.bannerWillBeRemoved')}
-                      </div>
-                    ) : (brandingBannerFile || dataroom.branding_banner) ? (
-                      <img
-                        src={brandingPreviewUrl || dataroom.branding_banner}
-                        alt="Banner preview"
-                        className="h-28 w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-28 items-center justify-center text-xs text-gray-500">
-                        {t('datarooms.noBannerUploaded')}
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {t('datarooms.logoRecommendation')}
+                    </p>
+                    {(!removeBrandLogoOverride && dataroom?.brand_logo_override || brandLogoOverrideFile) && (
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setBrandLogoOverrideFile(null);
+                            setRemoveBrandLogoOverride(true);
+                          }}
+                        >
+                          {t('datarooms.removeLogo')}
+                        </Button>
                       </div>
                     )}
                   </div>
+
+                  <div>
+                    <Label className="text-xs font-medium text-muted-foreground">{t('datarooms.preview')}</Label>
+                    <div className="mt-2 flex h-24 items-center justify-center rounded-lg border border-border bg-background p-3">
+                      {removeBrandLogoOverride ? (
+                        <span className="text-xs text-muted-foreground">
+                          {t('datarooms.logoWillBeRemoved', { defaultValue: 'Logo override will be removed' })}
+                        </span>
+                      ) : brandLogoPreviewUrl || dataroom?.brand_logo_override ? (
+                        <img
+                          src={brandLogoPreviewUrl || dataroom?.brand_logo_override}
+                          alt="Dataroom logo preview"
+                          className="max-h-16 max-w-full object-contain"
+                        />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {t('datarooms.noLogoUploaded', { defaultValue: 'No custom logo uploaded' })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
+              )}
+            </div>
+
+            {/* Banner Settings Section */}
+            <div className="pb-6 border-b border-gray-200 dark:border-gray-800">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">{t('datarooms.bannerMode')}</h3>
+                {bannerMode === 'single' && (
+                  <Button size="sm" onClick={handleSaveBanner} disabled={isSavingBanner}>
+                    {isSavingBanner && <Loader2 className="h-4 w-4 animate-spin mr-1.5" />}
+                    {isSavingBanner ? t('common.saving') : t('common.save')}
+                  </Button>
+                )}
               </div>
+              <p className="mb-3 text-sm text-gray-600 dark:text-gray-300">
+                {t('datarooms.bannerModeDescription')}
+              </p>
+
+              {/* Mode Toggle Buttons */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {[
+                  { value: 'single', label: t('datarooms.bannerModeSingle') },
+                  { value: 'gallery', label: t('datarooms.bannerModeGallery') },
+                  { value: 'none', label: t('datarooms.bannerModeNone') },
+                ].map((option) => {
+                  const isSelected = bannerMode === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => handleBannerModeChange(option.value)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-primary text-primary-foreground border-primary shadow-xs'
+                          : 'bg-background hover:bg-muted text-foreground border-border'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Mode Specific Body */}
+              {bannerMode === 'single' && (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <input
+                      ref={bannerFileInputRef}
+                      id="dataroom-banner"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setBrandingBannerFile(file);
+                        if (file) setRemoveBrandingBanner(false);
+                      }}
+                    />
+                    <div className="mt-2 flex items-center gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => bannerFileInputRef.current?.click()}
+                      >
+                        {t('datarooms.uploadBanner')}
+                      </Button>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
+                        {brandingBannerFile ? brandingBannerFile.name : t('datarooms.noFileSelected')}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      {t('datarooms.bannerRecommendation')}
+                    </p>
+                    {(dataroom?.branding_banner || brandingBannerFile) && (
+                      <div className="mt-3 flex gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setBrandingBannerFile(null);
+                            setRemoveBrandingBanner(true);
+                          }}
+                        >
+                          {t('datarooms.removeBanner')}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <Label>{t('datarooms.preview')}</Label>
+                    <div className="mt-2 overflow-hidden rounded-md border border-gray-200 dark:border-gray-700">
+                      {removeBrandingBanner ? (
+                        <div className="flex h-28 items-center justify-center text-xs text-gray-500">
+                          {t('datarooms.bannerWillBeRemoved')}
+                        </div>
+                      ) : (brandingBannerFile || dataroom?.branding_banner) ? (
+                        <img
+                          src={brandingPreviewUrl || dataroom?.branding_banner}
+                          alt="Banner preview"
+                          className="h-28 w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-28 items-center justify-center text-xs text-gray-500">
+                          {t('datarooms.noBannerUploaded')}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {bannerMode === 'gallery' && (
+                <div className="mt-2">
+                  <DataroomBannerGalleryManager
+                    dataroomId={dataroomId}
+                    images={galleryImages}
+                    onImagesChange={fetchGalleryImages}
+                    canManage={canManage}
+                  />
+                </div>
+              )}
+
+              {bannerMode === 'none' && (
+                <div className="rounded-lg border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
+                  {t('datarooms.bannerHiddenNotice', {
+                    defaultValue: 'Banner is disabled. Viewers will navigate directly to folder and file listings without a top banner.',
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="pb-6 border-b border-gray-200 dark:border-gray-800">

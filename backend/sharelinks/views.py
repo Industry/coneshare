@@ -261,6 +261,60 @@ def _is_nda_accepted(link: ShareLink, request, auth_status) -> bool:
     return False
 
 
+def _get_share_link_organization(link: ShareLink):
+    if link.document_id:
+        return link.document.organization
+    if link.dataroom_id:
+        return link.dataroom.organization
+    return None
+
+
+def _resolve_dataroom_brand_logo_url(dataroom, org) -> str | None:
+    if not dataroom:
+        return None
+    mode = getattr(dataroom, 'logo_mode', 'org') or 'org'
+    if mode in ('dataroom', 'override') and dataroom.brand_logo_override:
+        return urljoin(settings.SITE_DOMAIN, dataroom.brand_logo_override.url)
+    if org and org.brand_logo:
+        return urljoin(settings.SITE_DOMAIN, org.brand_logo.url)
+    return None
+
+
+def _build_dataroom_branding_payload(dataroom, org=None) -> dict:
+    if not dataroom:
+        return {}
+    banner_images = []
+    if dataroom.banner_mode == 'gallery':
+        banner_images = [
+            {
+                'id': str(img.id),
+                'image': urljoin(settings.SITE_DOMAIN, img.image.url) if img.image else None,
+                'caption': img.caption,
+                'position': img.position,
+            }
+            for img in dataroom.banner_images.all().order_by('position', 'created_at')
+        ]
+    brand_logo_override_url = (
+        urljoin(settings.SITE_DOMAIN, dataroom.brand_logo_override.url)
+        if (dataroom.logo_mode in ('dataroom', 'override') and dataroom.brand_logo_override)
+        else None
+    )
+    resolved_brand_logo_url = _resolve_dataroom_brand_logo_url(dataroom, org)
+    branding_banner_url = urljoin(settings.SITE_DOMAIN, dataroom.branding_banner.url) if dataroom.branding_banner else None
+
+    return {
+        'branding_banner': branding_banner_url,
+        'banner_mode': dataroom.banner_mode,
+        'banner_images': banner_images,
+        'logo_mode': dataroom.logo_mode,
+        'brand_logo_override': brand_logo_override_url,
+        'resolved_brand_logo_url': resolved_brand_logo_url,
+        'brand_primary_color': dataroom.brand_primary_color,
+        'brand_secondary_color': dataroom.brand_secondary_color,
+        'brand_accent_color': dataroom.brand_accent_color,
+    }
+
+
 def _build_share_link_public_meta(link: ShareLink, request=None) -> dict:
     owner = link.created_by
     owner_name = (owner.name or "").strip() or "Shared by owner"
@@ -277,11 +331,18 @@ def _build_share_link_public_meta(link: ShareLink, request=None) -> dict:
 
     target_name = ""
     target_type = "document"
+    logo_mode = "org"
+    resolved_brand_logo_url = None
+    org = _get_share_link_organization(link)
     if link.document:
         target_name = link.document.name
+        if org and org.brand_logo:
+            resolved_brand_logo_url = urljoin(settings.SITE_DOMAIN, org.brand_logo.url)
     elif link.dataroom:
         target_type = "dataroom"
         target_name = link.dataroom.name
+        logo_mode = link.dataroom.logo_mode or "org"
+        resolved_brand_logo_url = _resolve_dataroom_brand_logo_url(link.dataroom, org)
 
     has_accepted_current_nda = False
     if request:
@@ -302,15 +363,9 @@ def _build_share_link_public_meta(link: ShareLink, request=None) -> dict:
         "nda_text": link.nda_text,
         "nda_version": link.nda_version,
         "has_accepted_current_nda": has_accepted_current_nda,
+        "logo_mode": logo_mode,
+        "resolved_brand_logo_url": resolved_brand_logo_url,
     }
-
-
-def _get_share_link_organization(link: ShareLink):
-    if link.document_id:
-        return link.document.organization
-    if link.dataroom_id:
-        return link.dataroom.organization
-    return None
 
 
 def _is_dataroom_folder_path_visible(link: ShareLink, folder: DataroomFolder | None) -> bool:
@@ -835,14 +890,14 @@ class ShareLinkViewDataView(APIView):
                 parent_folder_id = setting.dataroom_document.folder_id
                 breadcrumbs = _build_dataroom_breadcrumbs(parent_folder_id, dataroom=dataroom)
 
+                org = _get_share_link_organization(link)
+                branding_data = _build_dataroom_branding_payload(dataroom, org)
+
                 dataroom_context = {
                     'id': dataroom.id,
                     'name': dataroom.name,
                     'show_file_index': dataroom.show_file_index,
-                    'branding_banner': urljoin(settings.SITE_DOMAIN, dataroom.branding_banner.url) if dataroom.branding_banner else None,
-                    'brand_primary_color': dataroom.brand_primary_color,
-                    'brand_secondary_color': dataroom.brand_secondary_color,
-                    'brand_accent_color': dataroom.brand_accent_color,
+                    **branding_data,
                     'parent_folder_id': parent_folder_id,
                     'breadcrumbs': breadcrumbs,
                 }
@@ -1213,15 +1268,15 @@ class ShareLinkViewDataView(APIView):
             paginated_items = merged_items[offset: offset + limit]
             next_offset = offset + limit if (offset + limit) < total_count else None
 
+            org = _get_share_link_organization(link)
+            branding_data = _build_dataroom_branding_payload(dataroom, org)
+
             response_data = {
                 'link_type': 'dataroom',
                 'id': dataroom.id,
                 'name': dataroom.name,
                 'show_file_index': dataroom.show_file_index,
-                'branding_banner': urljoin(settings.SITE_DOMAIN, dataroom.branding_banner.url) if dataroom.branding_banner else None,
-                'brand_primary_color': dataroom.brand_primary_color,
-                'brand_secondary_color': dataroom.brand_secondary_color,
-                'brand_accent_color': dataroom.brand_accent_color,
+                **branding_data,
                 'current_parent_id': current_parent_id,
                 'breadcrumbs': breadcrumbs,
                 'items': paginated_items,

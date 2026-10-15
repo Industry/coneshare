@@ -370,3 +370,8 @@ COMPOSE_PROJECT_NAME=coneshare docker-compose exec frontend npm test -- --run sr
 - **Context/Implication:** Public share link page image and watermark render endpoints (`ShareLinkPageView`, `WatermarkedPageRenderView`) previously only verified basic session dictionary presence (`if not auth_status`), rather than enforcing sequential credential verification (`password_verified`, `email_verified`, NDA). This created an inconsistency with `/view-data/` when multiple link protections (e.g. password + email/NDA) were combined.
 - **Resolution/Action:** Extracted sequential authorization checks (expiration -> password -> email -> NDA) into a unified helper `_verify_share_link_session_authorization`, enforced it across page rendering, watermark, and download views, and aligned pre-check guards in `/request-access/` and `/accept-nda/`. Added regression test cases in `backend/tests/sharelinks/test_views.py`.
 
+### 2026-10-15 Session Entry
+- **Category:** Architecture Choice
+- **Context/Implication:** Dataroom branding supports banner modes (`single`, `gallery`, `none`) and per-dataroom logo modes (`org`, `dataroom`). "No Logo" was intentionally omitted because datarooms always require an identity anchor across viewer headers, access gates (Password/Email/NDA), and internal listings. In the internal dataroom list, custom logos replace the generic folder icon for immediate visual recognition.
+- **Resolution/Action:** Canonical enum for custom dataroom logo is `logo_mode = 'dataroom'`. Frontend `DataroomCardIcon` renders `dataroom.brand_logo_override` when `logo_mode === 'dataroom'` with graceful fallback to `<Folder />` on image load error (`onError`). Viewers always fall back to the organization's verified logo if no custom logo is configured.
+
