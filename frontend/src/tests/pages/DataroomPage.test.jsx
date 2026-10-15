@@ -126,6 +126,15 @@ describe('DataroomPage', () => {
         api.getShareLinksForDataroom.mockResolvedValue({ data: [] });
         api.getDataroomViewSessions.mockResolvedValue({ data: { results: [], count: 0 } });
         api.getDataroomStats.mockResolvedValue({ data: { total_views: 0, unique_viewers: 0, total_downloads: 0, avg_duration_seconds: 0 } });
+        api.getDataroomBannerImages.mockResolvedValue({ data: [] });
+        api.updateDataroomBranding.mockImplementation(async (id, data) => ({
+            data: {
+                ...mockDataroomRoot,
+                ...data,
+                banner_mode: data.bannerMode || data.banner_mode,
+                logo_mode: data.logoMode || data.logo_mode,
+            }
+        }));
     });
 
     const renderComponent = () => {
@@ -1091,6 +1100,130 @@ describe('DataroomPage', () => {
             await waitFor(() => {
                 expect(api.upgradeDataroomStorage).toHaveBeenCalledWith('dr123');
             });
+        });
+    });
+
+    describe('Branding and Banners Settings', () => {
+        it('renders logo mode and banner mode options and allows switching modes', async () => {
+            const user = userEvent.setup();
+            api.getDataroom.mockResolvedValue({
+                data: {
+                    ...mockDataroomRoot,
+                    created_by: 'u1',
+                    storage_version: 2,
+                    logo_mode: 'org',
+                    banner_mode: 'single',
+                }
+            });
+
+            renderComponent();
+            expect(await screen.findByRole('heading', { name: 'Test Dataroom' })).toBeInTheDocument();
+
+            // Switch to Settings tab
+            const settingsTab = screen.getByRole('tab', { name: 'Settings' });
+            await user.click(settingsTab);
+
+            // Verify Logo Mode buttons are rendered (No Logo is omitted)
+            expect(await screen.findByText('Logo Mode')).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Organization Default' })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Custom for Dataroom' })).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'No Logo' })).not.toBeInTheDocument();
+
+            // Verify Banner Mode buttons are rendered
+            expect(screen.getByText('Banner Mode')).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Single Banner' })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Banner Gallery' })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'No Banner' })).toBeInTheDocument();
+
+            // Switch Banner Mode to "Banner Gallery"
+            const galleryBtn = screen.getByRole('button', { name: 'Banner Gallery' });
+            await user.click(galleryBtn);
+
+            // Banner gallery manager is displayed with empty state
+            expect(await screen.findByText('No banner images uploaded yet.')).toBeInTheDocument();
+
+            // Switch Banner Mode to "No Banner"
+            const noBannerBtn = screen.getByRole('button', { name: 'No Banner' });
+            await user.click(noBannerBtn);
+
+            expect(screen.getByText('Banner is disabled. Viewers will navigate directly to folder and file listings without a top banner.')).toBeInTheDocument();
+        });
+
+        it('renders banner gallery in internal document list when banner_mode is gallery', async () => {
+            api.getDataroom.mockResolvedValue({
+                data: {
+                    ...mockDataroomRoot,
+                    created_by: 'u1',
+                    storage_version: 2,
+                    banner_mode: 'gallery',
+                    banner_images: [
+                        { id: 'b1', image: 'https://example.com/slide1.jpg', caption: 'Internal Gallery Slide 1', position: 0 },
+                        { id: 'b2', image: 'https://example.com/slide2.jpg', caption: 'Internal Gallery Slide 2', position: 1 },
+                    ]
+                }
+            });
+
+            renderComponent();
+            expect(await screen.findByRole('heading', { name: 'Test Dataroom' })).toBeInTheDocument();
+
+            // Active tab defaults to "documents" (internal list)
+            expect(screen.getByRole('tab', { name: 'Documents' })).toHaveAttribute('data-state', 'active');
+
+            // Interactive banner gallery is rendered at the top of the internal page
+            expect(await screen.findByRole('region', { name: 'Interactive banner gallery' })).toBeInTheDocument();
+            expect(screen.getAllByText('Internal Gallery Slide 1')[0]).toBeInTheDocument();
+        });
+
+        it('removes top banner gallery after deleting the last gallery image', async () => {
+            const user = userEvent.setup();
+            api.getDataroom.mockResolvedValue({
+                data: {
+                    ...mockDataroomRoot,
+                    created_by: 'u1',
+                    storage_version: 2,
+                    banner_mode: 'gallery',
+                    banner_images: [
+                        { id: 'b1', image: 'https://example.com/slide1.jpg', caption: 'Only Slide', position: 0 },
+                    ]
+                }
+            });
+            api.getDataroomBannerImages
+                .mockResolvedValueOnce({
+                    data: [
+                        { id: 'b1', image: 'https://example.com/slide1.jpg', caption: 'Only Slide', position: 0 },
+                    ]
+                })
+                .mockResolvedValueOnce({
+                    data: []
+                });
+            api.deleteDataroomBannerImage.mockResolvedValueOnce({ data: {} });
+
+            renderComponent();
+            expect(await screen.findByRole('heading', { name: 'Test Dataroom' })).toBeInTheDocument();
+
+            // Initially, the top banner is rendered
+            expect(await screen.findByAltText('Only Slide')).toBeInTheDocument();
+
+            // Switch to Settings tab
+            const settingsTab = screen.getByRole('tab', { name: 'Settings' });
+            await user.click(settingsTab);
+
+            // Find and click delete button for banner image 1
+            const deleteButton = await screen.findByRole('button', { name: 'Delete banner image 1' });
+            await user.click(deleteButton);
+
+            // Confirm delete in the modal
+            const confirmDeleteButton = screen.getAllByRole('button', { name: 'Delete' }).find(
+                (b) => b.getAttribute('type') === 'button'
+            );
+            await user.click(confirmDeleteButton);
+
+            // Switch back to Documents tab
+            const documentsTab = screen.getByRole('tab', { name: 'Documents' });
+            await user.click(documentsTab);
+
+            // The banner should no longer be rendered
+            expect(screen.queryByAltText('Only Slide')).not.toBeInTheDocument();
         });
     });
 });

@@ -18,6 +18,37 @@ import { getDatarooms, deleteDataroom, removeDataroomCollaborator } from '../ser
 import { useUser } from '../contexts/UserProvider';
 import { formatDate, getAvatarInitial, isDataroomOwner, isDataroomCollaborator } from '../utils/formatters';
 
+function DataroomCardIcon({ dataroom }) {
+  const [hasError, setHasError] = useState(false);
+  const showCustomLogo =
+    (dataroom?.logo_mode === 'dataroom' || dataroom?.logo_mode === 'override') &&
+    Boolean(dataroom?.brand_logo_override) &&
+    !hasError;
+
+  useEffect(() => {
+    setHasError(false);
+  }, [dataroom?.brand_logo_override]);
+
+  if (showCustomLogo) {
+    return (
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/30 p-0.5 overflow-hidden">
+        <img
+          src={dataroom.brand_logo_override}
+          alt={`${dataroom.name} logo`}
+          className="h-full w-full object-contain"
+          onError={() => setHasError(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+      <Folder className="h-4 w-4" />
+    </div>
+  );
+}
+
 export function DataroomsPage() {
   const { t } = useTranslation();
   const { user: currentUser } = useUser();
@@ -39,7 +70,7 @@ export function DataroomsPage() {
       const params = currentScope !== 'all' ? { scope: currentScope } : {};
       const response = await getDatarooms(params);
       setDatarooms(response.data);
-    } catch (error) {
+    } catch {
       // Error toast is handled by api interceptor
     } finally {
       setIsLoading(false);
@@ -66,7 +97,7 @@ export function DataroomsPage() {
       toast.success(t('datarooms.deleteSuccess', { name: dataroomToDelete.name }));
       setDataroomToDelete(null);
       await fetchDatarooms();
-    } catch (error) {
+    } catch {
       // Error toast handled by interceptor
     }
   };
@@ -79,7 +110,7 @@ export function DataroomsPage() {
       toast.success(t('datarooms.leaveDataroomSuccess'));
       setDataroomToLeave(null);
       await fetchDatarooms();
-    } catch (error) {
+    } catch {
       // Error toast handled by interceptor
     } finally {
       setIsLeaving(false);
@@ -179,9 +210,7 @@ export function DataroomsPage() {
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0 pr-2">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <Folder className="h-4 w-4" />
-                      </div>
+                      <DataroomCardIcon dataroom={dataroom} />
                       <h3 className="font-semibold text-base truncate" title={dataroom.name}>
                         {dataroom.name}
                       </h3>

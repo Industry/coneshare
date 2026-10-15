@@ -508,6 +508,8 @@ export function ShareLinkViewerPage() {
     downloadUrl += `?dataroom_document_id=${dataroomDocumentIdFromUrl}`;
   }
 
+  const effectiveLogoUrl = viewData?.resolved_brand_logo_url || viewData?.dataroom_context?.resolved_brand_logo_url || publicMeta?.resolved_brand_logo_url || brandLogoUrl;
+
   if (viewData && (viewData.download_only || !isPreviewable)) {
     const isWatermarkedVideoBlocked = viewData.type === 'video' && 
       viewData.link_settings?.enable_watermark && 
@@ -521,7 +523,7 @@ export function ShareLinkViewerPage() {
         <DocumentViewerHeader
           documentName={viewData.name}
           brandName={brandName}
-          brandLogoUrl={brandLogoUrl}
+          brandLogoUrl={effectiveLogoUrl}
           brandWebsiteUrl={brandWebsiteUrl}
           ownerName={publicMeta?.owner_name}
           ownerAvatarUrl={publicMeta?.owner_avatar_url}
@@ -635,7 +637,7 @@ export function ShareLinkViewerPage() {
       <DocumentViewerHeader
         documentName={viewData?.name}
         brandName={brandName}
-        brandLogoUrl={brandLogoUrl}
+        brandLogoUrl={effectiveLogoUrl}
         brandWebsiteUrl={brandWebsiteUrl}
         ownerName={publicMeta?.owner_name}
         ownerAvatarUrl={publicMeta?.owner_avatar_url}

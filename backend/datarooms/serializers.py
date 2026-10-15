@@ -1,27 +1,93 @@
-from urllib.parse import urljoin
+import os
 import posixpath
 import re
+from urllib.parse import urljoin
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
+from PIL import Image
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 
 from core.models import User
 from .models import (
     Dataroom,
+    DataroomBannerImage,
     DataroomCollaborator,
     DataroomDocument,
     DataroomFolder,
     DataroomItemOrder,
+    BANNER_MODE_CHOICES,
+    LOGO_MODE_CHOICES,
 )
-from .utils import build_ordered_dataroom_items
+from .utils import build_ordered_dataroom_items, is_dataroom_owner_or_admin
 from .services import get_dataroom_storage_used_bytes
 
 HEX_COLOR_RE = re.compile(r"^#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 MAX_STORAGE_QUOTA_MB = 1048576  # 1 TB (1,048,576 MB)
+MAX_BANNER_IMAGE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
+MAX_BRAND_LOGO_SIZE_BYTES = 2 * 1024 * 1024    # 2 MB
+MAX_BANNER_IMAGES_PER_DATAROOM = 10
+
+
+class DataroomBannerImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    position = serializers.IntegerField(min_value=0, max_value=1000, required=False)
+
+    class Meta:
+        model = DataroomBannerImage
+        fields = [
+            'id', 'dataroom', 'image', 'image_url', 'caption', 'position',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'dataroom', 'image_url', 'created_at', 'updated_at']
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_image_url(self, obj) -> str:
+        if not obj.image:
+            return None
+        return urljoin(settings.SITE_DOMAIN, obj.image.url)
+
+    def validate_image(self, value):
+        if not value:
+            return value
+        if hasattr(value, 'size') and value.size > MAX_BANNER_IMAGE_SIZE_BYTES:
+            raise serializers.ValidationError("Banner image file size cannot exceed 5 MB.")
+        try:
+            if hasattr(value, 'seek'):
+                value.seek(0)
+            img = Image.open(value)
+            img.verify()
+            if img.format not in ('PNG', 'JPEG', 'WEBP'):
+                raise serializers.ValidationError(
+                    f"Unsupported image format '{img.format}'. Allowed formats are PNG, JPEG, WEBP."
+                )
+            if hasattr(value, 'seek'):
+                value.seek(0)
+        except serializers.ValidationError:
+            raise
+        except Exception:
+            raise serializers.ValidationError("Uploaded file is not a valid image.")
+        return value
+
+    def validate_position(self, value):
+        if value is not None and (value < 0 or value > 1000):
+            raise serializers.ValidationError("Position must be between 0 and 1000.")
+        return value
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['image'] = self.get_image_url(instance)
+        return data
+
+
+class DataroomBannerImageReorderItemSerializer(serializers.Serializer):
+    id = serializers.CharField(required=True)
+    position = serializers.IntegerField(min_value=0, max_value=1000, required=True)
+
 
 
 class DataroomCollaboratorUserSerializer(serializers.ModelSerializer):
@@ -80,6 +146,7 @@ class DataroomTransferOwnershipSerializer(serializers.Serializer):
 
 class DataroomSerializer(serializers.ModelSerializer):
     remove_branding_banner = serializers.BooleanField(write_only=True, required=False, default=False)
+    remove_brand_logo_override = serializers.BooleanField(write_only=True, required=False, default=False)
     owner = serializers.SerializerMethodField()
     current_user_role = serializers.SerializerMethodField()
     collaborator_count = serializers.SerializerMethodField()
@@ -88,6 +155,11 @@ class DataroomSerializer(serializers.ModelSerializer):
         if not obj.branding_banner:
             return None
         return urljoin(settings.SITE_DOMAIN, obj.branding_banner.url)
+
+    def _get_brand_logo_override_url(self, obj):
+        if not obj.brand_logo_override:
+            return None
+        return urljoin(settings.SITE_DOMAIN, obj.brand_logo_override.url)
 
     def _validate_hex_color(self, value, field_name):
         if value in (None, ""):
@@ -106,6 +178,49 @@ class DataroomSerializer(serializers.ModelSerializer):
 
     def validate_brand_accent_color(self, value):
         return self._validate_hex_color(value, "brand_accent_color")
+
+    def validate_brand_logo_override(self, value):
+        if not value:
+            return value
+        if hasattr(value, 'size') and value.size > MAX_BRAND_LOGO_SIZE_BYTES:
+            raise serializers.ValidationError("Brand logo override file size cannot exceed 2 MB.")
+        name = getattr(value, 'name', '') or ''
+        ext = os.path.splitext(name)[1].lower().lstrip('.')
+        allowed_extensions = ['png', 'jpg', 'jpeg', 'webp']
+        if ext and ext not in allowed_extensions:
+            raise serializers.ValidationError(
+                f"Unsupported file extension '{ext}'. Allowed extensions are: {', '.join(allowed_extensions)}."
+            )
+        try:
+            if hasattr(value, 'seek'):
+                value.seek(0)
+            img = Image.open(value)
+            img.verify()
+            if img.format not in ('PNG', 'JPEG', 'WEBP'):
+                raise serializers.ValidationError(
+                    f"Unsupported image format '{img.format}'. Allowed formats are PNG, JPEG, WEBP."
+                )
+            if hasattr(value, 'seek'):
+                value.seek(0)
+        except serializers.ValidationError:
+            raise
+        except Exception:
+            raise serializers.ValidationError("Uploaded file is not a valid image.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        if self.instance and request and hasattr(request, 'user') and request.user and request.user.is_authenticated:
+            if not is_dataroom_owner_or_admin(request.user, self.instance):
+                branding_fields = {
+                    'branding_banner', 'remove_branding_banner',
+                    'brand_primary_color', 'brand_secondary_color', 'brand_accent_color',
+                    'banner_mode', 'logo_mode', 'brand_logo_override', 'remove_brand_logo_override'
+                }
+                changed_branding = set(attrs.keys()) & branding_fields
+                if changed_branding:
+                    raise PermissionDenied("Only the dataroom owner or an organization admin can modify branding settings.")
+        return attrs
 
     @extend_schema_field(DataroomCollaboratorUserSerializer(allow_null=True))
     def get_owner(self, obj):
@@ -149,9 +264,7 @@ class DataroomSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"Storage quota cannot exceed {MAX_STORAGE_QUOTA_MB} MB (1 TB).")
         request = self.context.get('request')
         if self.instance and request and hasattr(request, 'user') and request.user and request.user.is_authenticated:
-            is_owner = self.instance.created_by_id == request.user.id
-            is_admin = getattr(request.user, 'role', '') == 'admin'
-            if not (is_owner or is_admin):
+            if not is_dataroom_owner_or_admin(request.user, self.instance):
                 raise PermissionDenied("Only the dataroom owner or an organization admin can update the storage quota.")
         return value
 
@@ -165,6 +278,7 @@ class DataroomSerializer(serializers.ModelSerializer):
             'enable_qna',
             'branding_banner', 'brand_primary_color', 'brand_secondary_color', 'brand_accent_color',
             'remove_branding_banner',
+            'banner_mode', 'logo_mode', 'brand_logo_override', 'remove_brand_logo_override',
         ]
         read_only_fields = [
             'id', 'organization', 'created_at', 'updated_at', 'created_by',
@@ -175,18 +289,41 @@ class DataroomSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         # API compatibility: this write-only control flag is only meaningful for updates.
         validated_data.pop('remove_branding_banner', None)
+        validated_data.pop('remove_brand_logo_override', None)
         return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        remove_logo = validated_data.pop('remove_branding_banner', False)
-        if remove_logo and instance.branding_banner:
-            instance.branding_banner.delete(save=False)
+        files_to_delete = []
+        remove_banner = validated_data.pop('remove_branding_banner', False)
+        if remove_banner and instance.branding_banner:
+            files_to_delete.append(instance.branding_banner)
             instance.branding_banner = None
-        return super().update(instance, validated_data)
+
+        remove_logo = validated_data.pop('remove_brand_logo_override', False)
+        if remove_logo and instance.brand_logo_override:
+            files_to_delete.append(instance.brand_logo_override)
+            instance.brand_logo_override = None
+
+        if 'brand_logo_override' in validated_data and instance.brand_logo_override:
+            files_to_delete.append(instance.brand_logo_override)
+
+        updated_instance = super().update(instance, validated_data)
+
+        if files_to_delete:
+            def _cleanup():
+                for f in files_to_delete:
+                    try:
+                        f.delete(save=False)
+                    except Exception:
+                        pass
+            transaction.on_commit(_cleanup)
+
+        return updated_instance
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
         data['branding_banner'] = self._get_branding_banner_url(instance)
+        data['brand_logo_override'] = self._get_brand_logo_override_url(instance)
         return data
 
 
@@ -267,6 +404,8 @@ class DataroomDocumentSerializer(serializers.ModelSerializer):
 class DataroomDetailSerializer(serializers.ModelSerializer):
     items = serializers.SerializerMethodField()
     branding_banner = serializers.SerializerMethodField()
+    brand_logo_override = serializers.SerializerMethodField()
+    banner_images = serializers.SerializerMethodField()
     owner = serializers.SerializerMethodField()
     current_user_role = serializers.SerializerMethodField()
     collaborator_count = serializers.SerializerMethodField()
@@ -285,7 +424,9 @@ class DataroomDetailSerializer(serializers.ModelSerializer):
             'storage_quota_mb', 'storage_used_bytes', 'storage_version',
             'show_file_index',
             'enable_qna',
-            'branding_banner', 'brand_primary_color', 'brand_secondary_color', 'brand_accent_color',
+            'branding_banner', 'banner_mode', 'banner_images',
+            'brand_logo_override', 'logo_mode',
+            'brand_primary_color', 'brand_secondary_color', 'brand_accent_color',
             'items'
         ]
         read_only_fields = fields
@@ -324,6 +465,17 @@ class DataroomDetailSerializer(serializers.ModelSerializer):
         if not obj.branding_banner:
             return None
         return urljoin(settings.SITE_DOMAIN, obj.branding_banner.url)
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_brand_logo_override(self, obj) -> str:
+        if not obj.brand_logo_override:
+            return None
+        return urljoin(settings.SITE_DOMAIN, obj.brand_logo_override.url)
+
+    @extend_schema_field(DataroomBannerImageSerializer(many=True))
+    def get_banner_images(self, obj):
+        images = obj.banner_images.all().order_by('position', 'created_at')
+        return DataroomBannerImageSerializer(images, many=True, context=self.context).data
 
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_items(self, obj):

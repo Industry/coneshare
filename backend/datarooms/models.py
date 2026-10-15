@@ -1,5 +1,6 @@
 import os
 
+from django.core.validators import FileExtensionValidator
 from django.db import models
 from django.db.models import Q
 
@@ -8,11 +9,42 @@ from core.models import BaseModel, Organization, User
 DROOM_ITEM_TYPE_FOLDER = "folder"
 DROOM_ITEM_TYPE_DOCUMENT = "document"
 
+BANNER_MODE_SINGLE = 'single'
+BANNER_MODE_GALLERY = 'gallery'
+BANNER_MODE_NONE = 'none'
+
+BANNER_MODE_CHOICES = (
+    (BANNER_MODE_SINGLE, 'Single banner image'),
+    (BANNER_MODE_GALLERY, 'Banner gallery'),
+    (BANNER_MODE_NONE, 'No banner'),
+)
+
+LOGO_MODE_ORG = 'org'
+LOGO_MODE_DATAROOM = 'dataroom'
+LOGO_MODE_NONE = 'none'
+
+LOGO_MODE_CHOICES = (
+    (LOGO_MODE_ORG, 'Organization logo (default)'),
+    (LOGO_MODE_DATAROOM, 'Dataroom logo'),
+)
+
 
 def dataroom_branding_banner_path(instance, filename):
     _, extension = os.path.splitext(filename)
     ext = extension or ".png"
     return f"dataroom-branding/{instance.organization_id}/{instance.id}/banner{ext}"
+
+
+def dataroom_branding_logo_path(instance, filename):
+    _, extension = os.path.splitext(filename)
+    ext = extension or ".png"
+    return f"dataroom-branding/{instance.organization_id}/{instance.id}/logo{ext}"
+
+
+def dataroom_gallery_image_path(instance, filename):
+    _, extension = os.path.splitext(filename)
+    ext = extension or ".png"
+    return f"dataroom-branding/{instance.dataroom.organization_id}/{instance.dataroom_id}/gallery/{instance.id}{ext}"
 
 
 class Dataroom(BaseModel):
@@ -22,6 +54,25 @@ class Dataroom(BaseModel):
     show_file_index = models.BooleanField(default=True)
     enable_qna = models.BooleanField(default=True)
     branding_banner = models.ImageField(upload_to=dataroom_branding_banner_path, null=True, blank=True)
+    banner_mode = models.CharField(
+        max_length=16,
+        choices=BANNER_MODE_CHOICES,
+        default=BANNER_MODE_SINGLE,
+        help_text="Banner surface rendering mode"
+    )
+    brand_logo_override = models.FileField(
+        upload_to=dataroom_branding_logo_path,
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(allowed_extensions=['png', 'jpg', 'jpeg', 'webp'])],
+        help_text="Optional per-dataroom logo (supports PNG, JPG, WebP)"
+    )
+    logo_mode = models.CharField(
+        max_length=16,
+        choices=LOGO_MODE_CHOICES,
+        default=LOGO_MODE_ORG,
+        help_text="Logo surface rendering mode"
+    )
     brand_primary_color = models.CharField(max_length=9, null=True, blank=True)
     brand_secondary_color = models.CharField(max_length=9, null=True, blank=True)
     brand_accent_color = models.CharField(max_length=9, null=True, blank=True)
@@ -41,6 +92,22 @@ class Dataroom(BaseModel):
 
     def __str__(self):
         return self.name
+
+
+class DataroomBannerImage(BaseModel):
+    dataroom = models.ForeignKey(Dataroom, on_delete=models.CASCADE, related_name='banner_images')
+    image = models.ImageField(upload_to=dataroom_gallery_image_path)
+    caption = models.CharField(max_length=255, blank=True, default="")
+    position = models.PositiveIntegerField(default=0, db_index=True)
+
+    class Meta:
+        ordering = ['position', 'created_at']
+        indexes = [
+            models.Index(fields=['dataroom', 'position']),
+        ]
+
+    def __str__(self):
+        return f"{self.dataroom_id} banner image #{self.position}"
 
 
 class DataroomFolder(BaseModel):

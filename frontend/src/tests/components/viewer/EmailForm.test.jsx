@@ -174,4 +174,40 @@ describe('EmailForm', () => {
     expect(screen.getByLabelText(/email address/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /continue/i })).toBeInTheDocument();
   });
+
+  it('renders organization brand logo when logo_mode is "org"', () => {
+    render(
+      <EmailForm
+        slug={slug}
+        onSuccess={mockOnSuccess}
+        publicMeta={{
+          owner_name: 'Alice Owner',
+          logo_mode: 'org',
+          resolved_brand_logo_url: 'https://example.com/org-logo.png',
+        }}
+      />
+    );
+
+    const logo = screen.getByRole('img', { name: /logo/i });
+    expect(logo).toBeInTheDocument();
+    expect(logo).toHaveAttribute('src', 'https://example.com/org-logo.png');
+  });
+
+  it('renders custom dataroom logo when logo_mode is "dataroom"', () => {
+    render(
+      <EmailForm
+        slug={slug}
+        onSuccess={mockOnSuccess}
+        publicMeta={{
+          owner_name: 'Alice Owner',
+          logo_mode: 'dataroom',
+          resolved_brand_logo_url: 'https://example.com/custom-logo.png',
+        }}
+      />
+    );
+
+    const logo = screen.getByRole('img', { name: /logo/i });
+    expect(logo).toBeInTheDocument();
+    expect(logo).toHaveAttribute('src', 'https://example.com/custom-logo.png');
+  });
 });

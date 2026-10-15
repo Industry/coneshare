@@ -20,6 +20,7 @@ import { FileTypeIcon } from '../documents/FileTypeIcon';
 import { Button } from '../ui/Button';
 import { QnAPanel } from './QnAPanel';
 import { DocumentViewerHeader } from './DocumentViewerHeader';
+import { DataroomBannerGallery } from './DataroomBannerGallery';
 import { DataroomFileTree } from './DataroomFileTree';
 import { ViewerToolbar } from './ViewerToolbar';
 import { PreviewViewer } from '../documents/PreviewViewer';
@@ -171,6 +172,11 @@ export function DataroomViewer({ data, slug, viewId, publicMeta }) {
         name: data.dataroom_context.name,
         show_file_index: data.dataroom_context.show_file_index,
         branding_banner: data.dataroom_context.branding_banner,
+        banner_mode: data.dataroom_context.banner_mode,
+        banner_images: data.dataroom_context.banner_images || [],
+        logo_mode: data.dataroom_context.logo_mode,
+        brand_logo_override: data.dataroom_context.brand_logo_override,
+        resolved_brand_logo_url: data.dataroom_context.resolved_brand_logo_url,
         brand_primary_color: data.dataroom_context.brand_primary_color,
         brand_secondary_color: data.dataroom_context.brand_secondary_color,
         brand_accent_color: data.dataroom_context.brand_accent_color,
@@ -824,6 +830,8 @@ export function DataroomViewer({ data, slug, viewId, publicMeta }) {
     docDownloadUrl += `&view_session_id=${viewId}`;
   }
 
+  const effectiveLogoUrl = scopeData?.resolved_brand_logo_url || publicMeta?.resolved_brand_logo_url || brandLogoUrl;
+
   return (
     <div
       className={`flex h-screen w-screen flex-col bg-gray-50 transition-[padding] duration-200 ${isQnaEnabled && qnaContext ? 'lg:pr-[34rem] xl:pr-[38rem]' : ''}`}
@@ -832,7 +840,7 @@ export function DataroomViewer({ data, slug, viewId, publicMeta }) {
       <DocumentViewerHeader
         documentName={scopeData.name}
         brandName={brandName}
-        brandLogoUrl={brandLogoUrl}
+        brandLogoUrl={effectiveLogoUrl}
         brandWebsiteUrl={brandWebsiteUrl}
         ownerName={publicMeta?.owner_name}
         ownerAvatarUrl={publicMeta?.owner_avatar_url}
@@ -844,10 +852,14 @@ export function DataroomViewer({ data, slug, viewId, publicMeta }) {
         qnaThreadCount={!isDocActive ? currentScopeQnaThreadCount : 0}
         hasViewSession={Boolean(viewId)}
       />
-      {scopeData.branding_banner && !showDocumentViewer && (
-        <section className="flex-shrink-0 border-b bg-white">
-          <img src={scopeData.branding_banner} alt={`${scopeData.name} banner`} className="h-40 w-full object-cover md:h-56" />
-        </section>
+      {!showDocumentViewer && (
+        <DataroomBannerGallery
+          images={scopeData?.banner_images || scopeData?.branding_banner_images || []}
+          bannerMode={scopeData?.banner_mode || (scopeData?.branding_banner ? 'single' : 'none')}
+          singleBannerUrl={scopeData?.branding_banner}
+          dataroomName={scopeData?.name || ''}
+          isRootFolder={!scopeData?.current_parent_id && breadcrumbs.length === 0}
+        />
       )}
 
       <nav className="flex-shrink-0 border-b bg-white px-3 py-2 sm:px-4 flex items-center justify-between gap-2">

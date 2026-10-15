@@ -112,4 +112,11 @@ describe('DocumentViewerHeader', () => {
 
     expect(screen.queryByRole('button', { name: 'Open Q&A' })).not.toBeInTheDocument();
   });
+
+  it('omits brand logo img when brandLogoUrl is not provided (logo_mode none)', () => {
+    render(<DocumentViewerHeader {...defaultProps} brandLogoUrl={null} />);
+
+    expect(screen.queryByRole('img', { name: /acme corp logo/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Acme Corp')).toBeInTheDocument();
+  });
 });

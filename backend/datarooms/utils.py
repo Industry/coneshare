@@ -64,3 +64,23 @@ def build_ordered_dataroom_items(scope_rows, folders_data, documents_data):
         item['position'] = idx
     return merged
 
+
+def is_dataroom_owner_or_admin(user, dataroom) -> bool:
+    if not user or not user.is_authenticated:
+        return False
+    if getattr(dataroom, 'created_by_id', None) == user.id:
+        return True
+    if getattr(user, 'role', '') == 'admin' and getattr(dataroom, 'organization_id', None) == getattr(user, 'organization_id', None):
+        return True
+    return False
+
+
+def is_dataroom_collaborator_or_above(user, dataroom) -> bool:
+    if is_dataroom_owner_or_admin(user, dataroom):
+        return True
+    collaborators = getattr(dataroom, 'collaborators', None)
+    if collaborators and hasattr(collaborators, 'filter'):
+        return collaborators.filter(user=user).exists()
+    return False
+
+

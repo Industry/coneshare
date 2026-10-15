@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -249,6 +249,62 @@ describe('DataroomsPage', () => {
 
             await waitFor(() => {
                 expect(api.removeDataroomCollaborator).toHaveBeenCalledWith('dr_shared', 'u1');
+            });
+        });
+
+        it('renders custom logo when logo_mode is dataroom with valid brand_logo_override', async () => {
+            const logoDatarooms = [
+                {
+                    id: 'dr_custom_logo',
+                    name: 'Branded Room',
+                    created_by: 'u1',
+                    created_at: '2023-01-01T12:00:00Z',
+                    logo_mode: 'dataroom',
+                    brand_logo_override: 'https://example.com/custom-logo.png',
+                },
+                {
+                    id: 'dr_default_logo',
+                    name: 'Inherited Room',
+                    created_by: 'u1',
+                    created_at: '2023-01-01T12:00:00Z',
+                    logo_mode: 'org',
+                    brand_logo_override: null,
+                },
+            ];
+            api.getDatarooms.mockResolvedValue({ data: logoDatarooms });
+            renderComponent();
+
+            expect(await screen.findByText('Branded Room')).toBeInTheDocument();
+            const logoImg = screen.getByRole('img', { name: 'Branded Room logo' });
+            expect(logoImg).toHaveAttribute('src', 'https://example.com/custom-logo.png');
+
+            // Default room should not render a logo img
+            expect(screen.queryByRole('img', { name: 'Inherited Room logo' })).not.toBeInTheDocument();
+        });
+
+        it('falls back to default icon when custom logo fails to load', async () => {
+            const logoDatarooms = [
+                {
+                    id: 'dr_broken_logo',
+                    name: 'Broken Logo Room',
+                    created_by: 'u1',
+                    created_at: '2023-01-01T12:00:00Z',
+                    logo_mode: 'dataroom',
+                    brand_logo_override: 'https://example.com/broken.png',
+                },
+            ];
+            api.getDatarooms.mockResolvedValue({ data: logoDatarooms });
+            renderComponent();
+
+            const logoImg = await screen.findByRole('img', { name: 'Broken Logo Room logo' });
+            expect(logoImg).toBeInTheDocument();
+
+            // Fire image error event
+            fireEvent.error(logoImg);
+
+            // After error, image is replaced by fallback folder icon
+            await waitFor(() => {
+                expect(screen.queryByRole('img', { name: 'Broken Logo Room logo' })).not.toBeInTheDocument();
             });
         });
     });
