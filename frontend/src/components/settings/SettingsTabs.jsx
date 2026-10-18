@@ -7,8 +7,8 @@ export function SettingsTabs() {
   const tabs = [
     { to: '/settings', label: t('settings.profile'), end: true },
     { to: '/settings/password', label: t('settings.password') },
-    { to: '/settings/integrations', label: t('settings.integrations') },
-    { to: '/settings/api-keys', label: t('settings.apiKeys') },
+    { to: '/settings/integrations', label: t('settings.cloudStorage') },
+    { to: '/settings/api-keys', label: t('settings.mcpAndKeys') },
   ];
 
   return (

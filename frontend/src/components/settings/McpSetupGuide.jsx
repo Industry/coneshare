@@ -197,27 +197,24 @@ export function McpSetupGuide({ rawKey = null }) {
         <span>
           {t(
             "settings.mcpTierTip",
-            "Permissions Tip: Make sure your API key has Read & Write or Full Access if your AI agent needs to upload files or generate share links."
+            "Tip: Make sure your API key has Read & Write or Full Access if your AI agent needs to upload files or generate share links."
           )}
         </span>
       </div>
 
-      {/* Skill Integration & External Docs Footer */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-500">
-        <div className="flex items-center gap-1 text-primary font-medium">
-          <Sparkles className="h-3.5 w-3.5" />
+      {/* Skill Integration Footer */}
+      <div className="pt-2 border-t border-gray-200 dark:border-gray-700 text-xs">
+        <a
+          href="https://www.coneshare.com/agents"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-primary hover:underline font-medium"
+        >
+          <Sparkles className="h-3.5 w-3.5 shrink-0" />
           <span>
             {t("settings.mcpSkillInstall", "Install the coneshare-it skill for automated uploading, link sharing, and dataroom workflows.")}
           </span>
-        </div>
-        <a
-          href="https://docs.coneshare.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 hover:underline text-blue-600 dark:text-blue-400 font-medium shrink-0"
-        >
-          {t("settings.mcpNeedHelp", "Need help? Read the full setup documentation")}
-          <ExternalLink className="h-3 w-3" />
+          <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
         </a>
       </div>
     </div>
