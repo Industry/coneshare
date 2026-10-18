@@ -208,7 +208,9 @@
     "profile": "Profil",
     "password": "Passwort",
     "integrations": "Integrationen",
+    "cloudStorage": "Cloud-Speicher",
     "apiKeys": "API-Schlüssel",
+    "mcpAndKeys": "MCP & Keys",
     "language": "Sprache",
     "languageDescription": "Wählen Sie Ihre bevorzugte Benutzeroberflächensprache",
     "email": "E-Mail",
@@ -278,7 +280,7 @@
     "mcpConfigMode": "Konfigurationsmodus",
     "mcpModeCli": "Einzeiliger CLI-Befehl",
     "mcpModeJson": "JSON-Dateikonfiguration",
-    "mcpTierTip": "Berechtigungstipp: Stellen Sie sicher, dass Ihr API-Schlüssel über Lese- und Schreibzugriff oder Vollzugriff verfügt, wenn Ihr KI-Agent Dateien hochladen oder Freigabelinks erstellen soll.",
+    "mcpTierTip": "Tipp: Stellen Sie sicher, dass Ihr API-Schlüssel über Lese- und Schreibzugriff oder Vollzugriff verfügt, wenn Ihr KI-Agent Dateien hochladen oder Freigabelinks erstellen soll.",
     "mcpSkillInstall": "Installieren Sie den coneshare-it Skill für automatisierte Uploads, Link-Sharing und Datenraum-Workflows.",
     "mcpNeedHelp": "Brauchen Sie Hilfe? Lesen Sie die vollständige Dokumentation"
   },

@@ -136,23 +136,20 @@ export function IntegrationsSettingsPage() {
     return PROVIDER_CONFIG[name]?.displayName || name;
   };
 
-  if (isLoading) {
-    return (
-      <div className="p-4 sm:mx-4 sm:pt-8 flex justify-center items-center h-[50vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-      </div>
-    );
-  }
-
   return (
     <div className="p-4 sm:mx-4 sm:pt-8">
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-3xl">
         <h1 className="text-2xl font-bold mb-6">{t('settings.title')}</h1>
         <SettingsTabs />
 
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">{t('settings.cloudIntegrationsTitle')}</h2>
+        {isLoading ? (
+          <div className="flex h-64 items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-lg font-medium text-gray-900 dark:text-gray-100">{t('settings.cloudIntegrationsTitle')}</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               {t('settings.cloudIntegrationsSubtitle')}
             </p>
@@ -244,9 +241,10 @@ export function IntegrationsSettingsPage() {
             })}
           </div>
         </div>
-      </div>
+      )}
+    </div>
 
-      {/* Disconnection Confirmation Dialog */}
+    {/* Disconnection Confirmation Dialog */}
       <Dialog open={!!selectedConnection} onOpenChange={(open) => !open && setSelectedConnection(null)}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>

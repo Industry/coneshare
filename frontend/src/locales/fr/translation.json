@@ -236,7 +236,9 @@
     "profile": "Profil",
     "password": "Mot de passe",
     "integrations": "Intégrations",
+    "cloudStorage": "Stockage cloud",
     "apiKeys": "Clés API",
+    "mcpAndKeys": "MCP & Keys",
     "language": "Langue",
     "languageDescription": "Sélectionnez votre langue d'interface préférée",
     "email": "E-mail",
@@ -306,7 +308,7 @@
     "mcpConfigMode": "Mode de configuration",
     "mcpModeCli": "Commande CLI sur 1 ligne",
     "mcpModeJson": "Fichier de configuration JSON",
-    "mcpTierTip": "Conseil de permissions : Assurez-vous que votre clé API dispose des droits Lecture & Écriture ou Accès complet si votre agent IA doit téléverser des fichiers ou générer des liens de partage.",
+    "mcpTierTip": "Conseil : Assurez-vous que votre clé API dispose des droits Lecture & Écriture ou Accès complet si votre agent IA doit téléverser des fichiers ou générer des liens de partage.",
     "mcpSkillInstall": "Installez le skill coneshare-it pour automatiser les téléversements, les partages de liens et les opérations dans les datarooms.",
     "mcpNeedHelp": "Besoin d'aide ? Consultez la documentation complète d'installation"
   },

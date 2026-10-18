@@ -208,7 +208,9 @@
     "profile": "Profiel",
     "password": "Wachtwoord",
     "integrations": "Integraties",
+    "cloudStorage": "Cloudopslag",
     "apiKeys": "API-sleutels",
+    "mcpAndKeys": "MCP & Keys",
     "language": "Taal",
     "languageDescription": "Selecteer uw voorkeurstaal voor de interface",
     "email": "E-mail",
@@ -278,7 +280,7 @@
     "mcpConfigMode": "Configuratiemodus",
     "mcpModeCli": "CLI-opdracht van 1 regel",
     "mcpModeJson": "JSON-bestandsconfiguratie",
-    "mcpTierTip": "Tip over machtigingen: zorg dat uw API-sleutel Lezen en schrijven of Volledige toegang heeft als uw AI-agent bestanden moet uploaden of deellinks moet genereren.",
+    "mcpTierTip": "Tip: zorg dat uw API-sleutel Lezen en schrijven of Volledige toegang heeft als uw AI-agent bestanden moet uploaden of deellinks moet genereren.",
     "mcpSkillInstall": "Installeer de coneshare-it-skill voor geautomatiseerd uploaden, links delen en dataroom-workflows.",
     "mcpNeedHelp": "Hulp nodig? Lees de volledige installatiedocumentatie"
   },

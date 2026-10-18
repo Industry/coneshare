@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/Avatar";
 import { SettingsTabs } from "../components/settings/SettingsTabs";
 import { SUPPORTED_LANGUAGES } from "../lib/constants";
 import { getAvatarInitial } from "../utils/formatters";
+import { Loader2 } from "lucide-react";
 
 function UserSettingsPage() {
   const { t, i18n } = useTranslation();
@@ -114,88 +115,88 @@ function UserSettingsPage() {
     }
   };
 
-  if (isLoading) {
-    return <div className="p-4 sm:mx-4 sm:pt-8">{t('common.loading')}</div>;
-  }
-
-  if (!user) {
-    return <div className="p-4 sm:mx-4 sm:pt-8">{t('common.error')}</div>;
-  }
-
   return (
     <div className="p-4 sm:mx-4 sm:pt-8">
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-3xl">
         <h1 className="text-2xl font-bold mb-6">{t('settings.title')}</h1>
         <SettingsTabs />
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2">
-            <Label htmlFor="email">{t('settings.email')}</Label>
-            <Input
-              id="email"
-              type="email"
-              value={user.email}
-              readOnly
-              className="bg-gray-100 dark:bg-gray-800"
-            />
+        {isLoading ? (
+          <div className="flex h-64 items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="name">{t('settings.name')}</Label>
-            <Input
-              id="name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('auth.name')}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="language">{t('settings.language')}</Label>
-            <select
-              id="language"
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {SUPPORTED_LANGUAGES.map((lang) => (
-                <option key={lang.code} value={lang.code}>
-                  {lang.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-foreground">
-              {t('settings.languageDescription')}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label>{t('settings.avatar')}</Label>
-            <div className="flex items-center gap-4">
-              <Avatar className="h-20 w-20">
-                <AvatarImage src={avatarPreview} />
-                <AvatarFallback>{getAvatarInitial(name, user?.email)}</AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fileInputRef.current.click()}
-                >
-                  {t('common.change')}
-                </Button>
-              </div>
+        ) : !user ? (
+          <div className="text-center py-8 text-red-500">{t('common.error')}</div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="email">{t('settings.email')}</Label>
               <Input
-                ref={fileInputRef}
-                id="avatar"
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarChange}
-                className="hidden"
+                id="email"
+                type="email"
+                value={user.email}
+                readOnly
+                className="bg-gray-100 dark:bg-gray-800"
               />
             </div>
-          </div>
-          <Button type="submit" disabled={isSaving}>
-            {isSaving ? t('common.saving') : t('common.save')}
-          </Button>
-        </form>
+            <div className="space-y-2">
+              <Label htmlFor="name">{t('settings.name')}</Label>
+              <Input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('auth.name')}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="language">{t('settings.language')}</Label>
+              <select
+                id="language"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {SUPPORTED_LANGUAGES.map((lang) => (
+                  <option key={lang.code} value={lang.code}>
+                    {lang.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">
+                {t('settings.languageDescription')}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>{t('settings.avatar')}</Label>
+              <div className="flex items-center gap-4">
+                <Avatar className="h-20 w-20">
+                  <AvatarImage src={avatarPreview} />
+                  <AvatarFallback>{getAvatarInitial(name, user?.email)}</AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current.click()}
+                  >
+                    {t('common.change')}
+                  </Button>
+                </div>
+                <Input
+                  ref={fileInputRef}
+                  id="avatar"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  className="hidden"
+                />
+              </div>
+            </div>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? t('common.saving') : t('common.save')}
+            </Button>
+          </form>
+        )}
       </div>
     </div>
   );

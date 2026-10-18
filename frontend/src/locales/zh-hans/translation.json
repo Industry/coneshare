@@ -208,7 +208,9 @@
     "profile": "个人资料",
     "password": "密码",
     "integrations": "集成",
+    "cloudStorage": "云存储",
     "apiKeys": "API 密钥",
+    "mcpAndKeys": "MCP & Keys",
     "language": "界面语言",
     "languageDescription": "选择您偏好的界面显示语言",
     "email": "邮箱",
@@ -278,8 +280,8 @@
     "mcpConfigMode": "配置模式",
     "mcpModeCli": "单行 CLI 命令",
     "mcpModeJson": "JSON 配置文件",
-    "mcpTierTip": "权限提示：如果您的 AI 助手需要上传文件或生成分享链接，请确保 API 密钥具有“读写”或“完全权限”。",
-    "mcpSkillInstall": "安装 coneshare-it skill 以启用文档分发、上传和 Data Room 自动化。",
+    "mcpTierTip": "提示：如果您的 AI 助手需要上传文件或生成分享链接，请确保 API 密钥具有“读写”或“完全权限”。",
+    "mcpSkillInstall": "安装 coneshare-it skill 以启用文件上传、链接分享和资料室工作流自动化。",
     "mcpNeedHelp": "需要帮助？查看完整的 MCP 设置文档"
   },
   "auth": {

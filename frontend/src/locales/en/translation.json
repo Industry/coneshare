@@ -208,7 +208,9 @@
     "profile": "Profile",
     "password": "Password",
     "integrations": "Integrations",
+    "cloudStorage": "Cloud Storage",
     "apiKeys": "API Keys",
+    "mcpAndKeys": "MCP & Keys",
     "language": "Language",
     "languageDescription": "Select your preferred UI language",
     "email": "Email",
@@ -278,7 +280,7 @@
     "mcpConfigMode": "Configuration Mode",
     "mcpModeCli": "1-Line CLI Command",
     "mcpModeJson": "JSON File Config",
-    "mcpTierTip": "Permissions Tip: Make sure your API key has Read & Write or Full Access if your AI agent needs to upload files or generate share links.",
+    "mcpTierTip": "Tip: Make sure your API key has Read & Write or Full Access if your AI agent needs to upload files or generate share links.",
     "mcpSkillInstall": "Install the coneshare-it skill for automated uploading, link sharing, and dataroom workflows.",
     "mcpNeedHelp": "Need help? Read the full setup documentation"
   },

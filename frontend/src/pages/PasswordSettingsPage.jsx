@@ -52,7 +52,7 @@ function PasswordSettingsPage() {
 
   return (
     <div className="p-4 sm:mx-4 sm:pt-8">
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-3xl">
         <h1 className="text-2xl font-bold mb-6">{t('settings.title')}</h1>
         <SettingsTabs />
         <form onSubmit={handleSubmit} className="space-y-6">
