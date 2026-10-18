@@ -151,16 +151,38 @@ describe('Frontend i18n System', () => {
     expect(testI18n.t('errors.linkRequiresEmail')).toBe('Voor deze link is een e-mailadres vereist om te bekijken.');
   });
 
-  it('has the same keys as English for Dutch (nl)', () => {
-    const flatten = (obj, prefix = '') => Object.entries(obj).flatMap(([k, v]) =>
-      (v && typeof v === 'object' ? flatten(v, `${prefix}${k}.`) : [[`${prefix}${k}`, v]]));
-    const enEntries = Object.fromEntries(flatten(en));
-    const nlEntries = Object.fromEntries(flatten(nl));
+  const flattenKeys = (obj, prefix = '') => Object.entries(obj).flatMap(([k, v]) =>
+    (v && typeof v === 'object' ? flattenKeys(v, `${prefix}${k}.`) : [[`${prefix}${k}`, v]]));
+  const extractPlaceholders = (str) => (String(str).match(/{{[^}]+}}/g) || []).sort();
+
+  const supportedLocaleBundles = [
+    { code: 'zh-hans', bundle: zhHans, name: 'Simplified Chinese' },
+    { code: 'ru', bundle: ru, name: 'Russian' },
+    { code: 'de', bundle: de, name: 'German' },
+    { code: 'fr', bundle: fr, name: 'French' },
+    { code: 'nl', bundle: nl, name: 'Dutch' },
+  ];
+
+  supportedLocaleBundles.forEach(({ code, bundle, name }) => {
+    it(`covers all English keys and placeholder signatures for ${name} (${code})`, () => {
+      const enEntries = Object.fromEntries(flattenKeys(en));
+      const targetEntries = Object.fromEntries(flattenKeys(bundle));
+      const enKeys = Object.keys(enEntries);
+      const targetKeySet = new Set(Object.keys(targetEntries));
+
+      const missingKeys = enKeys.filter((k) => !targetKeySet.has(k));
+      expect(missingKeys, `Missing keys in ${code}`).toEqual([]);
+
+      for (const key of enKeys) {
+        expect(extractPlaceholders(targetEntries[key]), `Placeholder mismatch in ${code}.${key}`).toEqual(extractPlaceholders(enEntries[key]));
+      }
+    });
+  });
+
+  it('has exact 1:1 key parity with English for Dutch (nl)', () => {
+    const enEntries = Object.fromEntries(flattenKeys(en));
+    const nlEntries = Object.fromEntries(flattenKeys(nl));
     expect(Object.keys(nlEntries).sort()).toEqual(Object.keys(enEntries).sort());
-    const placeholders = (str) => (String(str).match(/{{[^}]+}}/g) || []).sort();
-    for (const key of Object.keys(enEntries)) {
-      expect(placeholders(nlEntries[key]), key).toEqual(placeholders(enEntries[key]));
-    }
   });
 
   it('falls back to English for missing keys in non-English locale', async () => {
