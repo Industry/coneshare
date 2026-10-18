@@ -9,9 +9,9 @@
 
 # Coneshare
 
-在您现有的存储（Nextcloud、Google Drive、Dropbox）之上添加虚拟资料室、安全分享、文档追踪和工作流自动化。自托管的 DocSend 与传统虚拟资料室替代方案。
+Coneshare 是 DocSend 的开源自托管替代方案，直接运行在您现有的存储之上（Nextcloud、Google Drive 或 Dropbox）。文件始终保留在您自己的服务器中，无需转存至第三方云平台。
 
-Coneshare 是一个开源的自托管平台，为您现有的文件添加安全分发层。分享文档和视频，实时追踪受众参与度，并触发自动化工作流，同时将文件完整保留在您自己的基础设施中。
+使用 Coneshare 安全分享文档与视频：添加动态水印，实时逐页追踪访客阅读动态，并根据访问行为自动触发工作流。
 
 [快速开始](https://github.com/coneshare/coneshare-compose) · [文档](https://docs.coneshare.com/zh/) · [在线演示](https://www.coneshare.com/demo) · [路线图](https://github.com/orgs/coneshare/projects/2/) · [论坛](https://github.com/orgs/coneshare/discussions)
 
@@ -60,7 +60,7 @@ Coneshare 直接运行在您的现有存储之上：
 - 直接连接现有存储，不复制或冗余存储文件。
 
 ### 多语言国际化
-- 提供英语、简体中文、俄语、德语与法语支持（`en`、`zh-hans`、`ru`、`de`、`fr`）。
+- 提供英语、简体中文、俄语、德语、法语与荷兰语支持（`en`、`zh-hans`、`ru`、`de`、`fr`、`nl`）。
 
 ---
 
@@ -182,6 +182,7 @@ Coneshare 由四个主要服务组成：
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/xiez"><img src="https://avatars.githubusercontent.com/u/1459699?v=4?s=100" width="100px;" alt="Justin Zheng"/><br /><sub><b>Justin Zheng</b></sub></a><br /><a href="https://github.com/coneshare/coneshare/commits?author=xiez" title="Code">💻</a> <a href="https://github.com/coneshare/coneshare/commits?author=xiez" title="Infrastructure (Hosting, Build-Tools, etc)">🚇</a> <a href="https://github.com/coneshare/coneshare/commits?author=xiez" title="Documentation">📖</a> <a href="https://github.com/coneshare/coneshare/commits?author=xiez" title="Design">🎨</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/jamesramsay"><img src="https://avatars.githubusercontent.com/u/1191554?v=4?s=100" width="100px;" alt="James Ramsay"/><br /><sub><b>James Ramsay</b></sub></a><br /><a href="https://github.com/coneshare/coneshare/commits?author=jamesramsay" title="Code">💻</a> <a href="https://github.com/coneshare/coneshare/commits?author=jamesramsay" title="Tests">⚠️</a> <a href="https://github.com/coneshare/coneshare/issues?q=author%3Ajamesramsay" title="Bug reports">🐛</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/mfriedewald"><img src="https://avatars.githubusercontent.com/u/12811724?v=4?s=100" width="100px;" alt="Matthias Friedewald"/><br /><sub><b>Matthias Friedewald</b></sub></a><br /><a href="https://github.com/coneshare/coneshare/commits?author=mfriedewald" title="Code">💻</a> <a href="https://github.com/coneshare/coneshare/commits?author=mfriedewald" title="Tests">⚠️</a> <a href="https://github.com/coneshare/coneshare/issues?q=author%3Amfriedewald" title="Bug reports">🐛</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/KeizerDev"><img src="https://avatars.githubusercontent.com/u/4026917?v=4?s=100" width="100px;" alt="KeizerDev"/><br /><sub><b>KeizerDev</b></sub></a><br /><a href="https://github.com/coneshare/coneshare/commits?author=KeizerDev" title="Code">💻</a> <a href="https://github.com/coneshare/coneshare/commits?author=KeizerDev" title="Translation">🌍</a> <a href="https://github.com/coneshare/coneshare/commits?author=KeizerDev" title="Tests">⚠️</a></td>
     </tr>
   </tbody>
 </table>
