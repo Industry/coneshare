@@ -495,10 +495,8 @@ def create_new_document_version(
         old_file_size = document.file_size or 0
         User.objects.filter(pk=requesting_user.pk).update(total_document_size=F('total_document_size') - old_file_size + file_size)
 
-        # 2. Set the old version to not be primary
-        if latest_version:
-            latest_version.is_primary = False
-            latest_version.save()
+        # 2. Clear the current primary. After a promote, this may not be the latest version.
+        document.versions.filter(is_primary=True).update(is_primary=False)
 
         # 3. Create the new version record
         new_version = DocumentVersion.objects.create(

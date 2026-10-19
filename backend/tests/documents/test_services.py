@@ -14,6 +14,7 @@ from documents.services import (
     copy_document,
     QuotaExceededError,
     promote_document_version,
+    create_new_document_version,
     check_user_quota_on_upload,
     touch_folder_ancestors,
     soft_delete_document,
@@ -524,6 +525,49 @@ class TestPreviewModeServices:
             assert version.render_status == DocumentVersion.RENDER_QUEUED
             mock_task_delay.assert_called_once_with(version.id)
 
+
+
+@pytest.mark.django_db
+class TestCreateNewDocumentVersion:
+    @patch('documents.services._route_document_for_processing')
+    def test_new_version_after_promote_is_only_primary(self, mock_route, user):
+        doc = Document.objects.create(
+            organization=user.organization,
+            created_by=user,
+            name="contract.pdf",
+            type="pdf",
+            content_type="application/pdf",
+            file_size=100,
+            status="ready",
+        )
+        versions = [
+            DocumentVersion.objects.create(
+                document=doc,
+                version_number=n,
+                is_primary=(n == 2),  # v2 was promoted back after v3 was uploaded
+                file_size=100,
+                content_type="application/pdf",
+                original_storage_key=f"v{n}.pdf",
+                storage_key=f"v{n}.pdf",
+                type="pdf",
+            )
+            for n in (1, 2, 3)
+        ]
+
+        new_version = create_new_document_version(
+            document=doc,
+            requesting_user=user,
+            storage_key="v4.pdf",
+            file_size=100,
+            content_type="application/pdf",
+        )
+
+        assert new_version.version_number == 4
+        assert list(doc.versions.filter(is_primary=True)) == [new_version]
+        for version in versions:
+            version.refresh_from_db()
+            assert not version.is_primary
+        mock_route.assert_called_once()
 
 
 @pytest.mark.django_db
