@@ -897,6 +897,7 @@ class ShareLinkViewDataView(APIView):
                     'id': dataroom.id,
                     'name': dataroom.name,
                     'show_file_index': dataroom.show_file_index,
+                    'updated_at': dataroom.updated_at.isoformat(),
                     **branding_data,
                     'parent_folder_id': parent_folder_id,
                     'breadcrumbs': breadcrumbs,
@@ -1089,6 +1090,7 @@ class ShareLinkViewDataView(APIView):
                     "enable_watermark": enable_watermark,
                     "watermark_text": link.watermark_text,
                     "resolved_watermark_text": resolved_watermark_text,
+                    "require_nda": link.require_nda,
                 }
             }
             if dataroom_context:
@@ -1276,6 +1278,7 @@ class ShareLinkViewDataView(APIView):
                 'id': dataroom.id,
                 'name': dataroom.name,
                 'show_file_index': dataroom.show_file_index,
+                'updated_at': dataroom.updated_at.isoformat(),
                 **branding_data,
                 'current_parent_id': current_parent_id,
                 'breadcrumbs': breadcrumbs,
@@ -1295,6 +1298,7 @@ class ShareLinkViewDataView(APIView):
                     'enable_qna': link.qna_enabled,
                     'enable_watermark': link.enable_watermark,
                     'watermark_text': link.watermark_text,
+                    'require_nda': link.require_nda,
                 }
             }
             return Response(response_data, status=status.HTTP_200_OK)

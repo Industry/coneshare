@@ -37,7 +37,11 @@
     "status": "Status",
     "order": "Reihenfolge",
     "images": "Bilder",
-    "currentFile": "Aktuelles Logo"
+    "currentFile": "Aktuelles Logo",
+    "showAllFolders": "Alle {{count}} Ordner anzeigen",
+    "showLess": "Weniger anzeigen",
+    "showingCount": "{{count}} angezeigt",
+    "actionsFor": "Aktionen für {{name}}"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -182,7 +186,10 @@
     "openFolderQna": "F&A für aktuellen Ordner öffnen",
     "closeFolderQna": "F&A für aktuellen Ordner schließen",
     "threadsCount_one": "{{count}} Thread",
-    "threadsCount_other": "{{count}} Threads"
+    "threadsCount_other": "{{count}} Threads",
+    "folderQna": "Ordner-F&A",
+    "askQuestion": "Frage stellen",
+    "threadsCount": "{{count}} Themen"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -403,7 +410,11 @@
     "processingStatus": "In Verarbeitung",
     "errorStatus": "Fehler",
     "collaboratorAccessNoticeTitle": "Über Datenraum geteiltes Dokument",
-    "collaboratorAccessNoticeDesc": "Sie haben über einen geteilten Datenraum schreibgeschützten Mitarbeiterzugriff auf dieses Dokument. Direkte Freigabelinks, Besucher-Tracking-Protokolle und Link-Sicherheitseinstellungen werden ausschließlich vom Dokumenteigentümer oder von Organisationsadministratoren verwaltet."
+    "collaboratorAccessNoticeDesc": "Sie haben über einen geteilten Datenraum schreibgeschützten Mitarbeiterzugriff auf dieses Dokument. Direkte Freigabelinks, Besucher-Tracking-Protokolle und Link-Sicherheitseinstellungen werden ausschließlich vom Dokumenteigentümer oder von Organisationsadministratoren verwaltet.",
+    "documents": "Dokumente",
+    "documentsWithCount": "DOKUMENTE ({{count}})",
+    "folders": "Ordner",
+    "loadMore": "Mehr laden"
   },
   "datarooms": {
     "title": "Datenräume",
@@ -807,7 +818,32 @@
     "watermarkedVideoBlockedNotice": "Dieses Video überschreitet das Größenlimit für die Vorschau, und der Download ist aufgrund von Wasserzeichenanforderungen eingeschränkt.",
     "downloadRestricted": "Download eingeschränkt",
     "loadingMarkdown": "Markdown-Dokument wird geladen...",
-    "previewFailed": "Vorschau nicht verfügbar"
+    "previewFailed": "Vorschau nicht verfügbar",
+    "noFolders": "Keine Ordner in diesem Verzeichnis",
+    "noDocuments": "Keine Dokumente in diesem Verzeichnis",
+    "noMatchingFolders": "Keine Ordner entsprechen Ihrem Filter",
+    "noMatchingDocuments": "Keine Dokumente entsprechen Ihrem Filter",
+    "watermarked": "Mit Wasserzeichen",
+    "confidentialWatermarked": "Vertraulich · Mit Wasserzeichen",
+    "ndaActive": "NDA aktiv",
+    "visitorMode": "Besuchermodus",
+    "previewMode": "Kundenansicht · Schreibgeschützt",
+    "virtualDataroom": "Virtueller Datenraum",
+    "defaultHeroDescription": "Kuratierte Architektur-Blueprints, externe Prüfberichte und Unternehmens-Produktdokumentationen – sicher geteilt über Coneshare.",
+    "viewDocument": "Dokument anzeigen",
+    "watchVideo": "Video ansehen",
+    "filterPlaceholder": "Dateien in diesem Ordner filtern... ⌘K",
+    "gridView": "Rasteransicht",
+    "listView": "Listenansicht",
+    "viewMode": "Ansichtsmodus",
+    "noMatchingFiles": "Keine Dateien oder Ordner entsprechen Ihrem Filter.",
+    "featuredResources": "Ausgewählte Ressourcen",
+    "featured": "Hervorgehoben",
+    "openFolder": "Ordner öffnen",
+    "loading": "Wird geladen...",
+    "restrictedConfidential": "VERTRAULICH BESCHRÄNKT",
+    "bannerGallery": "Interaktive Banner-Galerie",
+    "goToSlide": "Gehe zu Folie {{number}}"
   },
   "viewSessions": {
     "unknownLocation": "Unbekannter Standort",

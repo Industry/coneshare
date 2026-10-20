@@ -37,7 +37,11 @@
     "status": "状态",
     "order": "顺序",
     "images": "张图片",
-    "currentFile": "当前已设 Logo"
+    "currentFile": "当前已设 Logo",
+    "showAllFolders": "展开全部 {{count}} 个文件夹",
+    "showLess": "收起",
+    "showingCount": "显示前 {{count}} 个",
+    "actionsFor": "{{name}} 的操作选项"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -182,7 +186,10 @@
     "openFolderQna": "打开当前文件夹问答",
     "closeFolderQna": "关闭当前文件夹问答",
     "threadsCount_one": "{{count}} 个主题",
-    "threadsCount_other": "{{count}} 个主题"
+    "threadsCount_other": "{{count}} 个主题",
+    "folderQna": "文件夹问答",
+    "askQuestion": "提出问题",
+    "threadsCount": "{{count}} 条问答"
   },
   "nav": {
     "dashboard": "仪表盘",
@@ -403,7 +410,11 @@
     "processingStatus": "处理中",
     "errorStatus": "错误",
     "collaboratorAccessNoticeTitle": "资料室协同文档",
-    "collaboratorAccessNoticeDesc": "您是通过共享资料室协同查阅此文档。该文档的直接外发分享链接、独立访客追踪日志及安全策略均由文档所有者或企业管理员专属管理。"
+    "collaboratorAccessNoticeDesc": "您是通过共享资料室协同查阅此文档。该文档的直接外发分享链接、独立访客追踪日志及安全策略均由文档所有者或企业管理员专属管理。",
+    "documents": "文档",
+    "documentsWithCount": "文档 ({{count}})",
+    "folders": "文件夹",
+    "loadMore": "加载更多"
   },
   "datarooms": {
     "title": "资料室",
@@ -748,6 +759,10 @@
     "root": "根目录",
     "loadingDocument": "正在加载文档...",
     "emptyFolder": "此文件夹为空。",
+    "noFolders": "当前目录下暂无文件夹",
+    "noDocuments": "当前目录下暂无文档",
+    "noMatchingFolders": "未找到与筛选条件匹配的文件夹",
+    "noMatchingDocuments": "未找到与筛选条件匹配的文档",
     "preview": "预览",
     "previousFile": "上一个文件",
     "previousPage": "上一页",
@@ -782,7 +797,28 @@
     "watermarkedVideoBlockedNotice": "此视频超出预览大小限制，且由于水印要求禁止下载。",
     "downloadRestricted": "禁止下载",
     "loadingMarkdown": "正在加载 Markdown 文档...",
-    "previewFailed": "预览不可用"
+    "previewFailed": "预览不可用",
+    "watermarked": "已添加水印",
+    "confidentialWatermarked": "机密 · 已添加水印",
+    "ndaActive": "保密协议生效中",
+    "visitorMode": "访客模式",
+    "previewMode": "客户视图 · 只读",
+    "virtualDataroom": "虚拟数据室",
+    "defaultHeroDescription": "通过 Coneshare 安全共享的架构蓝图、第三方审计报告与企业产品文档。",
+    "viewDocument": "查看文档",
+    "watchVideo": "观看视频",
+    "filterPlaceholder": "筛选当前目录下的文件... ⌘K",
+    "gridView": "网格视图",
+    "listView": "列表视图",
+    "viewMode": "视图模式",
+    "noMatchingFiles": "未找到与筛选条件匹配的文件或文件夹。",
+    "featuredResources": "精选资源",
+    "featured": "精选",
+    "openFolder": "打开文件夹",
+    "loading": "加载中...",
+    "restrictedConfidential": "机密受限",
+    "bannerGallery": "交互式横幅画廊",
+    "goToSlide": "前往第 {{number}} 张幻灯片"
   },
   "viewSessions": {
     "unknownLocation": "未知位置",

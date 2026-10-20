@@ -37,7 +37,11 @@
     "status": "Statut",
     "order": "Ordre",
     "images": "images",
-    "currentFile": "Logo actuel configuré"
+    "currentFile": "Logo actuel configuré",
+    "showAllFolders": "Afficher les {{count}} dossiers",
+    "showLess": "Afficher moins",
+    "showingCount": "Affichage de {{count}}",
+    "actionsFor": "Actions pour {{name}}"
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -183,7 +187,10 @@
     "closeFolderQna": "Fermer les Q&R pour le dossier actuel",
     "threadsCount_one": "{{count}} fil",
     "threadsCount_other": "{{count}} fils",
-    "threadsCount_many": "{{count}} fils"
+    "threadsCount_many": "{{count}} fils",
+    "folderQna": "Q&R du dossier",
+    "askQuestion": "Poser une question",
+    "threadsCount": "{{count}} fils"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -462,7 +469,11 @@
     "activeStatus": "Actif",
     "readyStatus": "Prêt",
     "processingStatus": "Traitement en cours",
-    "errorStatus": "Erreur"
+    "errorStatus": "Erreur",
+    "documents": "Documents",
+    "documentsWithCount": "DOCUMENTS ({{count}})",
+    "folders": "Dossiers",
+    "loadMore": "Charger plus"
   },
   "datarooms": {
     "title": "Datarooms",
@@ -931,7 +942,32 @@
     "watermarkedVideoBlockedNotice": "Cette vidéo dépasse la limite de taille pour l'aperçu, et le téléchargement est restreint en raison des exigences de filigrane.",
     "downloadRestricted": "Téléchargement restreint",
     "loadingMarkdown": "Chargement du document Markdown...",
-    "previewFailed": "Aperçu non disponible"
+    "previewFailed": "Aperçu non disponible",
+    "noFolders": "Aucun dossier dans ce répertoire",
+    "noDocuments": "Aucun document dans ce répertoire",
+    "noMatchingFolders": "Aucun dossier ne correspond à votre filtre",
+    "noMatchingDocuments": "Aucun document ne correspond à votre filtre",
+    "watermarked": "Filigrané",
+    "confidentialWatermarked": "Confidentiel · Filigrané",
+    "ndaActive": "NDA actif",
+    "visitorMode": "Mode visiteur",
+    "previewMode": "Vue client · Lecture seule",
+    "virtualDataroom": "Data room virtuelle",
+    "defaultHeroDescription": "Plans d'architecture sélectionnés, rapports d'audit tiers et documentation produit d'entreprise partagés en toute sécurité via Coneshare.",
+    "viewDocument": "Afficher le document",
+    "watchVideo": "Regarder la vidéo",
+    "filterPlaceholder": "Filtrer les fichiers de ce dossier... ⌘K",
+    "gridView": "Vue en grille",
+    "listView": "Vue en liste",
+    "viewMode": "Mode d'affichage",
+    "noMatchingFiles": "Aucun fichier ou dossier ne correspond à votre filtre.",
+    "featuredResources": "Ressources à la une",
+    "featured": "À la une",
+    "openFolder": "Ouvrir le dossier",
+    "loading": "Chargement...",
+    "restrictedConfidential": "CONFIDENTIEL RESTREINT",
+    "bannerGallery": "Galerie de bannières interactive",
+    "goToSlide": "Aller à la diapositive {{number}}"
   },
   "viewSessions": {
     "unknownLocation": "Emplacement inconnu",

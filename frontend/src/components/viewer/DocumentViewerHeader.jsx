@@ -1,4 +1,4 @@
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle, Lock, ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../ui/Button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/Avatar';
@@ -25,6 +25,8 @@ export function DocumentViewerHeader({
   qnaText = null,
   qnaThreadCount = 0,
   hasViewSession = false,
+  isWatermarked = false,
+  isNdaProtected = false,
 }) {
   const { t } = useTranslation();
   const resolvedQnaText = qnaText ?? t('qna.title', { defaultValue: 'Q&A' });
@@ -61,9 +63,9 @@ export function DocumentViewerHeader({
         </div>
       </div>
 
-      {/* Center: Document Title */}
+      {/* Center: Document Title & Security Capsule */}
       {documentName && (
-        <div className="mx-2 sm:mx-4 flex-1 min-w-0 max-w-xs sm:max-w-md md:max-w-lg lg:max-w-xl text-center">
+        <div className="mx-2 sm:mx-4 flex-1 min-w-0 max-w-xs sm:max-w-md md:max-w-lg lg:max-w-xl flex items-center justify-center gap-2">
           <h1
             className="truncate text-xs sm:text-sm font-medium"
             style={{ color: 'var(--viewer-primary, #374151)' }}
@@ -71,6 +73,26 @@ export function DocumentViewerHeader({
           >
             {documentName}
           </h1>
+          {isWatermarked && (
+            <span
+              data-testid="header-watermarked-badge"
+              className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-300 border border-gray-200/60 dark:border-zinc-700/60 text-[11px] font-medium shrink-0"
+              title={t('viewer.confidentialWatermarked', { defaultValue: 'Confidential · Watermarked' })}
+            >
+              <Lock className="h-3 w-3 text-gray-500 dark:text-gray-400" />
+              <span>{t('viewer.confidentialWatermarked', { defaultValue: 'Confidential · Watermarked' })}</span>
+            </span>
+          )}
+          {isNdaProtected && (
+            <span
+              data-testid="header-nda-badge"
+              className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-300 border border-gray-200/60 dark:border-zinc-700/60 text-[11px] font-medium shrink-0"
+              title={t('viewer.ndaActive', { defaultValue: 'NDA Active' })}
+            >
+              <ShieldCheck className="h-3 w-3 text-gray-500 dark:text-gray-400" />
+              <span>{t('viewer.ndaActive', { defaultValue: 'NDA Active' })}</span>
+            </span>
+          )}
         </div>
       )}
 

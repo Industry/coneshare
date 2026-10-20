@@ -1,4 +1,39 @@
 import { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Clock, Lock, ShieldCheck } from 'lucide-react';
+import { formatRelativeTime } from '../../utils/formatters';
+
+function BannerMetadataOverlay({ dataroomName, updatedAt, isNdaProtected }) {
+  const { t } = useTranslation();
+  if (!dataroomName && !isNdaProtected) return null;
+
+  return (
+    <div
+      data-testid="banner-metadata-overlay"
+      className="absolute bottom-0 inset-x-0 p-4 sm:p-6 bg-gradient-to-t from-black/85 via-black/45 to-transparent flex flex-col md:flex-row md:items-end justify-between gap-3 pointer-events-none select-none z-10"
+    >
+      <div className="min-w-0 max-w-2xl pointer-events-auto">
+        {dataroomName && (
+          <h2 className="text-lg sm:text-2xl font-bold tracking-tight text-white truncate drop-shadow-md">
+            {dataroomName}
+          </h2>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 shrink-0 self-start md:self-end pointer-events-auto">
+        {isNdaProtected && (
+          <span
+            data-testid="banner-nda-pill"
+            className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/70 backdrop-blur-md px-3 py-1 text-xs font-medium text-emerald-200 border border-emerald-400/30 shadow-xs"
+          >
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+            <span>{t('viewer.ndaActive', { defaultValue: 'NDA Active' })}</span>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /**
  * DataroomBannerGallery
@@ -13,7 +48,13 @@ export function DataroomBannerGallery({
   singleBannerUrl = null,
   dataroomName = '',
   isRootFolder = true,
+  updatedAt = null,
+  isWatermarked = false,
+  isNdaProtected = false,
+  showOverlay = true,
+  className = '',
 }) {
+  const { t } = useTranslation();
   const [activeIndex, setActiveIndex] = useState(0);
   const [mobileActiveIndex, setMobileActiveIndex] = useState(0);
   const carouselRef = useRef(null);
@@ -39,12 +80,29 @@ export function DataroomBannerGallery({
   if (bannerMode === 'single') {
     if (!singleBannerUrl) return null;
     return (
-      <section className="flex-shrink-0 border-b bg-white dark:bg-zinc-950">
+      <section className={`relative flex-shrink-0 rounded-2xl border border-gray-200/60 bg-white dark:bg-zinc-950 overflow-hidden shadow-sm ${className}`}>
         <img
           src={singleBannerUrl}
           alt={`${dataroomName} banner`}
           className="h-40 w-full object-cover md:h-56"
         />
+        {updatedAt && (
+          <div
+            data-testid="banner-updated-time"
+            className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex items-center gap-1.5 rounded-full bg-slate-950/60 backdrop-blur-md px-3 py-1 text-xs font-medium text-[#c6c6cd] border border-white/10 shadow-xs select-none pointer-events-auto"
+          >
+            <Clock className="h-3.5 w-3.5 text-gray-400" />
+            <span>{t('common.updated', { defaultValue: 'Updated' })} {formatRelativeTime(updatedAt)}</span>
+          </div>
+        )}
+        {showOverlay && (
+          <BannerMetadataOverlay
+            dataroomName={dataroomName}
+            updatedAt={updatedAt}
+            isWatermarked={isWatermarked}
+            isNdaProtected={isNdaProtected}
+          />
+        )}
       </section>
     );
   }
@@ -58,19 +116,35 @@ export function DataroomBannerGallery({
   if (validImages.length === 1) {
     const single = validImages[0];
     return (
-      <section className="relative flex-shrink-0 border-b bg-white dark:bg-zinc-950 overflow-hidden">
+      <section className={`relative flex-shrink-0 rounded-2xl border border-gray-200/60 bg-white dark:bg-zinc-950 overflow-hidden shadow-sm ${className}`}>
         <img
           src={single.image}
           alt={single.caption || `${dataroomName} banner`}
           className="h-44 w-full object-cover md:h-64"
         />
-        {single.caption && (
+        {updatedAt && (
+          <div
+            data-testid="banner-updated-time"
+            className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex items-center gap-1.5 rounded-full bg-slate-950/60 backdrop-blur-md px-3 py-1 text-xs font-medium text-[#c6c6cd] border border-white/10 shadow-xs select-none pointer-events-auto"
+          >
+            <Clock className="h-3.5 w-3.5 text-gray-400" />
+            <span>{t('common.updated', { defaultValue: 'Updated' })} {formatRelativeTime(updatedAt)}</span>
+          </div>
+        )}
+        {showOverlay ? (
+          <BannerMetadataOverlay
+            dataroomName={single.caption || dataroomName}
+            updatedAt={updatedAt}
+            isWatermarked={isWatermarked}
+            isNdaProtected={isNdaProtected}
+          />
+        ) : single.caption ? (
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 sm:p-6">
             <p className="max-w-4xl text-sm font-medium text-white drop-shadow-xs sm:text-base">
               {single.caption}
             </p>
           </div>
-        )}
+        ) : null}
       </section>
     );
   }
@@ -98,15 +172,42 @@ export function DataroomBannerGallery({
 
   return (
     <section
-      className="flex-shrink-0 border-b bg-neutral-900 overflow-hidden relative select-none"
+      className={`flex-shrink-0 rounded-2xl border border-gray-200/60 bg-neutral-900 overflow-hidden relative select-none shadow-sm ${className}`}
       aria-label={`${dataroomName} banner gallery`}
     >
+      {/* Top Left: Security Pills */}
+      {showOverlay && isNdaProtected && (
+        <div
+          data-testid="banner-security-pills"
+          className="absolute top-3 left-3 sm:top-4 sm:left-4 z-20 flex items-center gap-2 pointer-events-none select-none"
+        >
+          <span
+            data-testid="banner-nda-pill"
+            className="inline-flex items-center gap-1.5 rounded-full bg-slate-950/60 backdrop-blur-md px-3 py-1 text-xs font-medium text-emerald-200 border border-emerald-400/30 shadow-xs pointer-events-auto"
+          >
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
+            <span>{t('viewer.ndaActive', { defaultValue: 'NDA Active' })}</span>
+          </span>
+        </div>
+      )}
+
+      {/* Top Right: Last Updated Time (Align with Stitch Mockup) */}
+      {updatedAt && (
+        <div
+          data-testid="banner-updated-time"
+          className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex items-center gap-1.5 rounded-full bg-slate-950/60 backdrop-blur-md px-3 py-1 text-xs font-medium text-[#c6c6cd] border border-white/10 shadow-xs select-none pointer-events-auto"
+        >
+          <Clock className="h-3.5 w-3.5 text-gray-400" />
+          <span>{t('common.updated', { defaultValue: 'Updated' })} {formatRelativeTime(updatedAt)}</span>
+        </div>
+      )}
+
       {/* ================= DESKTOP ACCORDION GALLERY (md and above) ================= */}
       <div
         className="hidden md:flex w-full items-stretch transition-all duration-300 ease-out"
         style={{ height: desktopHeight }}
         role="region"
-        aria-label="Interactive banner gallery"
+        aria-label={t('viewer.bannerGallery', { defaultValue: 'Interactive banner gallery' })}
       >
         {validImages.map((img, index) => {
           const isActive = index === activeIndex;
@@ -206,7 +307,7 @@ export function DataroomBannerGallery({
               key={dotIndex}
               type="button"
               onClick={() => scrollToSlide(dotIndex)}
-              aria-label={`Go to slide ${dotIndex + 1}`}
+              aria-label={t('viewer.goToSlide', { number: dotIndex + 1, defaultValue: `Go to slide ${dotIndex + 1}` })}
               className={`h-1.5 rounded-full transition-all duration-300 ${
                 dotIndex === mobileActiveIndex
                   ? 'w-5 bg-white'

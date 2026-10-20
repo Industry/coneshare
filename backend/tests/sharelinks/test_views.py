@@ -1248,6 +1248,8 @@ class TestDataroomVisitTracking:
 
         assert data['current_parent_id'] is None
         assert data['breadcrumbs'] == []
+        assert data['updated_at'] == dataroom.updated_at.isoformat()
+        assert data['link_settings']['require_nda'] is False
         item_names = {item['name'] for item in data['items']}
         assert item_names == {"Root Folder", "Root Doc.pdf"}
 
@@ -1269,6 +1271,7 @@ class TestDataroomVisitTracking:
 
         assert data['current_parent_id'] == str(parent.id)
         assert data['breadcrumbs'] == [{'id': str(parent.id), 'name': 'Parent'}]
+        assert data['updated_at'] == dataroom.updated_at.isoformat()
         ids = {(item['type'], item['id']) for item in data['items']}
         assert ('folder', str(child_folder.id)) in ids
         assert ('document', str(child_ddoc.id)) in ids

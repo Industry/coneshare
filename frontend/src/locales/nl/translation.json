@@ -37,7 +37,11 @@
     "status": "Status",
     "order": "Volgorde",
     "images": "afbeeldingen",
-    "currentFile": "Huidig logo ingesteld"
+    "currentFile": "Huidig logo ingesteld",
+    "showAllFolders": "Toon alle {{count}} mappen",
+    "showLess": "Minder tonen",
+    "showingCount": "{{count}} weergegeven",
+    "actionsFor": "Acties voor {{name}}"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -182,7 +186,10 @@
     "openFolderQna": "Q&A voor huidige map openen",
     "closeFolderQna": "Q&A voor huidige map sluiten",
     "threadsCount_one": "{{count}} thread",
-    "threadsCount_other": "{{count}} threads"
+    "threadsCount_other": "{{count}} threads",
+    "folderQna": "Map V&A",
+    "askQuestion": "Vraag stellen",
+    "threadsCount": "{{count}} discussies"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -403,7 +410,11 @@
     "processingStatus": "Verwerken",
     "errorStatus": "Fout",
     "collaboratorAccessNoticeTitle": "Document gedeeld via dataroom",
-    "collaboratorAccessNoticeDesc": "U heeft als samenwerker alleen-lezentoegang tot dit document via een gedeelde dataroom. Directe deellinks, bezoekerslogboeken en linkbeveiligingsinstellingen worden uitsluitend beheerd door de eigenaar van het document of de organisatiebeheerders."
+    "collaboratorAccessNoticeDesc": "U heeft als samenwerker alleen-lezentoegang tot dit document via een gedeelde dataroom. Directe deellinks, bezoekerslogboeken en linkbeveiligingsinstellingen worden uitsluitend beheerd door de eigenaar van het document of de organisatiebeheerders.",
+    "documents": "Documenten",
+    "documentsWithCount": "DOCUMENTEN ({{count}})",
+    "folders": "Mappen",
+    "loadMore": "Meer laden"
   },
   "datarooms": {
     "title": "Datarooms",
@@ -781,7 +792,32 @@
     "watermarkedVideoBlockedNotice": "Deze video is te groot voor een voorbeeld en downloaden is beperkt vanwege watermerkvereisten.",
     "downloadRestricted": "Downloaden beperkt",
     "loadingMarkdown": "Markdown-document laden...",
-    "previewFailed": "Voorbeeld niet beschikbaar"
+    "previewFailed": "Voorbeeld niet beschikbaar",
+    "noFolders": "Geen mappen in deze map",
+    "noDocuments": "Geen documenten in deze map",
+    "noMatchingFolders": "Geen mappen komen overeen met uw filter",
+    "noMatchingDocuments": "Geen documenten komen overeen met uw filter",
+    "watermarked": "Met watermerk",
+    "confidentialWatermarked": "Vertrouwelijk · Met watermerk",
+    "ndaActive": "NDA actief",
+    "visitorMode": "Bezoekersmodus",
+    "previewMode": "Klantweergave · Alleen-lezen",
+    "virtualDataroom": "Virtuele dataroom",
+    "defaultHeroDescription": "Gecureerde architectuurblauwdrukken, auditrapporten van derden en zakelijke productdocumentatie, veilig gedeeld via Coneshare.",
+    "viewDocument": "Document bekijken",
+    "watchVideo": "Video bekijken",
+    "filterPlaceholder": "Filter bestanden in deze map... ⌘K",
+    "gridView": "Rasterweergave",
+    "listView": "Lijstweergave",
+    "viewMode": "Weergavemodus",
+    "noMatchingFiles": "Geen bestanden of mappen komen overeen met uw filter.",
+    "featuredResources": "Uitgelichte bronnen",
+    "featured": "Uitgelicht",
+    "openFolder": "Map openen",
+    "loading": "Laden...",
+    "restrictedConfidential": "VERTROUWELIJK BEPERKT",
+    "bannerGallery": "Interactieve bannergalerij",
+    "goToSlide": "Ga naar dia {{number}}"
   },
   "viewSessions": {
     "unknownLocation": "Onbekende locatie",

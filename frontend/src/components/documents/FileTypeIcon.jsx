@@ -104,3 +104,20 @@ export function FileTypeIcon({ type, className = "h-5 w-5", palette = "default" 
   return <FileQuestion data-testid="file-type-icon-unknown" className={className} style={style} />;
 }
 
+export function getDocumentBadgeStyle(type = '') {
+  const raw = String(type).trim().toLowerCase();
+  if (raw === 'pdf' || raw.endsWith('.pdf')) {
+    return 'bg-rose-50 text-rose-700 border-rose-100/80';
+  }
+  if (raw === 'document' || raw === 'doc' || raw === 'docx' || /\.(doc|docx|txt|rtf)$/i.test(raw)) {
+    return 'bg-blue-50 text-blue-700 border-blue-100/80';
+  }
+  if (raw === 'spreadsheet' || raw === 'sheet' || /\.(xlsx|xls|csv)$/i.test(raw)) {
+    return 'bg-emerald-50 text-emerald-700 border-emerald-100/80';
+  }
+  if (raw === 'video' || /\.(mp4|mov|webm)$/i.test(raw)) {
+    return 'bg-violet-50 text-violet-700 border-violet-100/80';
+  }
+  return 'bg-gray-100 text-gray-700 border-gray-200/60';
+}
+

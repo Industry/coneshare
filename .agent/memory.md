@@ -375,3 +375,13 @@ COMPOSE_PROJECT_NAME=coneshare docker-compose exec frontend npm test -- --run sr
 - **Context/Implication:** Dataroom branding supports banner modes (`single`, `gallery`, `none`) and per-dataroom logo modes (`org`, `dataroom`). "No Logo" was intentionally omitted because datarooms always require an identity anchor across viewer headers, access gates (Password/Email/NDA), and internal listings. In the internal dataroom list, custom logos replace the generic folder icon for immediate visual recognition.
 - **Resolution/Action:** Canonical enum for custom dataroom logo is `logo_mode = 'dataroom'`. Frontend `DataroomCardIcon` renders `dataroom.brand_logo_override` when `logo_mode === 'dataroom'` with graceful fallback to `<Folder />` on image load error (`onError`). Viewers always fall back to the organization's verified logo if no custom logo is configured.
 
+### 2026-10-20 Session Entry
+- **Category:** Architecture Choice
+- **Context/Implication:** Redesigned external Dataroom Viewer (`/view/:slug`) into a modern customer portal matching Stitch Screen 4 with Hero Banner, Featured Resources, Folder Cards, and Document List/Grid views.
+- **Resolution/Action:**
+  1. Added `DataroomFeaturedGrid` above `DataroomFolderGrid` for `is_starred` resources with 3-column highlight cards (dual-display in regular lists, hidden when empty). Top-left displays file/folder icon and top-right displays file type badge.
+  2. Exposed `is_starred` and `updated_at` on `PublicDataroomDocumentSerializer` and `PublicDataroomFolderSerializer`.
+  3. Structured folder cards with horizontal divider line, bottom timestamp, chevron right navigation affordance, and consolidated download into 3-dots actions menu.
+  4. Aligned Watermarked badge to neutral muted theme (`text-gray-500 dark:text-gray-400`) and synchronized translations across all 6 locales.
+
+

@@ -239,7 +239,6 @@ export function DocumentPreviewModal({ documentId, versionId = null, isOpen, onO
             <PdfJsViewer
               ref={viewerComponentRef}
               pdfUrl={documentData.pdf_preview_url}
-              title={documentData.name}
               zoomLevel={zoomLevel}
               onPageChange={setCurrentPage}
               onDocumentLoad={handleDocumentLoad}

@@ -37,7 +37,15 @@
     "status": "Статус",
     "order": "Порядок",
     "images": "изображений",
-    "currentFile": "Текущий логотип"
+    "currentFile": "Текущий логотип",
+    "showAllFolders": "Показать все {{count}} папок",
+    "showAllFolders_one": "Показать {{count}} папку",
+    "showAllFolders_few": "Показать все {{count}} папки",
+    "showAllFolders_many": "Показать все {{count}} папок",
+    "showAllFolders_other": "Показать все {{count}} папок",
+    "showLess": "Свернуть",
+    "showingCount": "Показано {{count}}",
+    "actionsFor": "Действия для {{name}}"
   },
   "dashboard": {
     "title": "Панель управления",
@@ -186,7 +194,10 @@
     "threadsCount_one": "{{count}} обсуждение",
     "threadsCount_few": "{{count}} обсуждения",
     "threadsCount_many": "{{count}} обсуждений",
-    "threadsCount_other": "{{count}} обсуждений"
+    "threadsCount_other": "{{count}} обсуждений",
+    "folderQna": "Вопросы по папке",
+    "askQuestion": "Задать вопрос",
+    "threadsCount": "{{count}} тем(ы)"
   },
   "nav": {
     "dashboard": "Панель управления",
@@ -409,7 +420,11 @@
     "processingStatus": "Обработка",
     "errorStatus": "Ошибка",
     "collaboratorAccessNoticeTitle": "Общий документ датарума",
-    "collaboratorAccessNoticeDesc": "У вас есть доступ только для просмотра к этому документу через общий датарум. Прямые ссылки для доступа, журналы отслеживания посетителей и параметры безопасности ссылок управляются исключительно владельцем документа или администраторами организации."
+    "collaboratorAccessNoticeDesc": "У вас есть доступ только для просмотра к этому документу через общий датарум. Прямые ссылки для доступа, журналы отслеживания посетителей и параметры безопасности ссылок управляются исключительно владельцем документа или администраторами организации.",
+    "documents": "Документы",
+    "documentsWithCount": "ДОКУМЕНТЫ ({{count}})",
+    "folders": "Папки",
+    "loadMore": "Загрузить еще"
   },
   "datarooms": {
     "title": "Датарумы",
@@ -793,7 +808,32 @@
     "watermarkedVideoBlockedNotice": "Размер этого видео превышает лимит для предпросмотра, а скачивание ограничено из-за требований к водяным знакам.",
     "downloadRestricted": "Скачивание ограничено",
     "loadingMarkdown": "Загрузка документа Markdown...",
-    "previewFailed": "Предпросмотр недоступен"
+    "previewFailed": "Предпросмотр недоступен",
+    "noFolders": "В этой папке нет вложенных папок",
+    "noDocuments": "В этой папке нет документов",
+    "noMatchingFolders": "Нет папок, соответствующих фильтру",
+    "noMatchingDocuments": "Нет документов, соответствующих фильтру",
+    "watermarked": "С водяным знаком",
+    "confidentialWatermarked": "Конфиденциально · С водяным знаком",
+    "ndaActive": "NDA действует",
+    "visitorMode": "Режим посетителя",
+    "previewMode": "Просмотр для клиентов · Только чтение",
+    "virtualDataroom": "Виртуальная комната данных",
+    "defaultHeroDescription": "Тщательно отобранные архитектурные схемы, сторонние аудиторские отчеты и корпоративная продуктовая документация, безопасно опубликованные через Coneshare.",
+    "viewDocument": "Просмотреть документ",
+    "watchVideo": "Смотреть видео",
+    "filterPlaceholder": "Фильтровать файлы в этой папке... ⌘K",
+    "gridView": "Сетка",
+    "listView": "Список",
+    "viewMode": "Режим просмотра",
+    "noMatchingFiles": "Нет файлов или папок, соответствующих фильтру.",
+    "featuredResources": "Рекомендуемые ресурсы",
+    "featured": "Рекомендуемое",
+    "openFolder": "Открыть папку",
+    "loading": "Загрузка...",
+    "restrictedConfidential": "СТРОГО КОНФИДЕНЦИАЛЬНО",
+    "bannerGallery": "Интерактивная галерея баннеров",
+    "goToSlide": "Перейти к слайду {{number}}"
   },
   "viewSessions": {
     "unknownLocation": "Неизвестное местоположение",

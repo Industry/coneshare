@@ -21,7 +21,6 @@ import { isSafeUrl } from '../../lib/utils';
 
 export const PdfJsViewer = forwardRef(({
   pdfUrl,
-  title = 'PDF Document',
   viewId,
   dataroomVisitId,
   watermarkText = '',
@@ -317,22 +316,24 @@ export const PdfJsViewer = forwardRef(({
 PdfJsViewer.displayName = 'PdfJsViewer';
 
 function buildWatermarkSvg(text) {
-  const safe = text
+  const safe = (text || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="340" height="180">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="340" height="180" viewBox="0 0 340 180">
     <text
-      x="170"
-      y="90"
-      font-family="Arial, sans-serif"
-      font-size="18"
+      x="50%"
+      y="50%"
+      font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+      font-size="14"
+      font-weight="500"
+      letter-spacing="0.5"
       fill="#000000"
       text-anchor="middle"
       dominant-baseline="middle"
-      transform="rotate(-35, 170, 90)"
+      transform="rotate(-25 170 90)"
     >${safe}</text>
   </svg>`;
 }
