@@ -384,4 +384,7 @@ COMPOSE_PROJECT_NAME=coneshare docker-compose exec frontend npm test -- --run sr
   3. Structured folder cards with horizontal divider line, bottom timestamp, chevron right navigation affordance, and consolidated download into 3-dots actions menu.
   4. Aligned Watermarked badge to neutral muted theme (`text-gray-500 dark:text-gray-400`) and synchronized translations across all 6 locales.
 
-
+### 2026-10-20 Session Entry
+- **Category:** Architecture Choice / Gotcha
+- **Context/Implication:** Frontend production bundle was ~2.94MB due to monolithic static page imports in `App.jsx`, causing slow initial loads for public dataroom visitors. Additionally, naive Rollup `manualChunks` grouping sub-dependencies (like `d3-*` with `recharts`) caused shared utility bleeding and unintended modulepreload in `index.html`.
+- **Resolution/Action:** Applied route-level code splitting using `React.lazy()` with `<Suspense>` across all pages in `App.jsx`, and configured Vite `manualChunks` strictly for clean top-level vendors (`vendor-react`, `vendor-pdfjs`, `vendor-hls`, `vendor-dndkit`). Documented strategy in `docs/strategy/frontend-bundle-optimization-strategy.md`.
