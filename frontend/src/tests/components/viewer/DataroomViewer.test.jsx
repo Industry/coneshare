@@ -1215,5 +1215,42 @@ describe('DataroomViewer', () => {
 
     expect(screen.getByTestId('header-nda-badge')).toBeInTheDocument();
   });
+
+  it('defaults sidebar to collapsed on mobile when opening a document', () => {
+    const originalInnerWidth = window.innerWidth;
+    window.innerWidth = 480;
+
+    const dataroomDocData = {
+      ...mockDataroomData,
+      items: [
+        {
+          id: 'doc-1',
+          name: 'Mobile Document.pdf',
+          type: 'document',
+          document_type: 'pdf',
+          preview_mode: 'client_pdf',
+          file_size: 1048576,
+        },
+      ],
+    };
+
+    try {
+      render(
+        <MemoryRouter initialEntries={['/view/test-slug?dataroom_document_id=doc-1']}>
+          <DataroomViewer
+            data={dataroomDocData}
+            slug="test-slug"
+            viewId="view-123"
+          />
+        </MemoryRouter>
+      );
+
+      // On mobile (< 768px), sidebar should be collapsed by default (renders Expand Sidebar button)
+      expect(screen.getByTitle('Expand Sidebar')).toBeInTheDocument();
+      expect(screen.queryByTitle('Collapse Sidebar')).not.toBeInTheDocument();
+    } finally {
+      window.innerWidth = originalInnerWidth;
+    }
+  });
 });
 

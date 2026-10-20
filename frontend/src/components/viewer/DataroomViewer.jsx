@@ -278,6 +278,10 @@ export function DataroomViewer({ data, slug, viewId, publicMeta }) {
   const [qnaContext, setQnaContext] = useState(null);
   const [currentScopeQnaThreadCount, setCurrentScopeQnaThreadCount] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    // On mobile devices (< 768px), default to collapsed so the document gets full width
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return true;
+    }
     try {
       return localStorage.getItem('coneshare_dataroom_sidebar_collapsed') === 'true';
     } catch {
@@ -773,6 +777,9 @@ export function DataroomViewer({ data, slug, viewId, publicMeta }) {
 
       clearDocumentView();
     } else {
+      if (typeof window !== 'undefined' && window.innerWidth < 768) {
+        setIsSidebarCollapsed(true);
+      }
       if (documentViewData && String(documentViewData.id) === String(item.id) && documentViewData.name !== item.name) {
         setDocumentViewData(prev => prev ? { ...prev, name: item.name } : null);
       }
