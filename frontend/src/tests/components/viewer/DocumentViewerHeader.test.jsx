@@ -119,4 +119,24 @@ describe('DocumentViewerHeader', () => {
     expect(screen.queryByRole('img', { name: /acme corp logo/i })).not.toBeInTheDocument();
     expect(screen.getByText('Acme Corp')).toBeInTheDocument();
   });
+
+  it('renders watermarked badge when isWatermarked is true', () => {
+    render(<DocumentViewerHeader {...defaultProps} isWatermarked={true} />);
+
+    expect(screen.getByTestId('header-watermarked-badge')).toBeInTheDocument();
+  });
+
+  it('does not render visitor mode badge in header (consolidated into hero banner)', () => {
+    render(<DocumentViewerHeader {...defaultProps} hasViewSession={true} />);
+
+    expect(screen.queryByTestId('header-tracked-badge')).not.toBeInTheDocument();
+  });
+
+  it('renders NDA badge when isNdaProtected is true', () => {
+    render(<DocumentViewerHeader {...defaultProps} isNdaProtected={true} />);
+
+    expect(screen.getByTestId('header-nda-badge')).toBeInTheDocument();
+    expect(screen.getByText(/NDA Active/i)).toBeInTheDocument();
+  });
 });
+

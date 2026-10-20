@@ -206,8 +206,8 @@ describe('DataroomViewer', () => {
       expect(screen.getByText('Sub Folder Document')).toBeInTheDocument();
     });
 
-    // Click the "Root" breadcrumb
-    fireEvent.click(screen.getByRole('button', { name: /root/i }));
+    // Click the "Home" breadcrumb
+    fireEvent.click(screen.getByRole('button', { name: /home|root/i }));
 
     // Should be back at the root, seeing the root items
     await waitFor(() => {
@@ -662,8 +662,8 @@ describe('DataroomViewer', () => {
 
     api.recordDataroomVisit.mockClear();
 
-    // Navigate to root
-    fireEvent.click(screen.getByRole('button', { name: /^root$/i }));
+    // Navigate to home/root
+    fireEvent.click(screen.getByRole('button', { name: /^(home|root)$/i }));
 
     // Wait until root contents are loaded
     await screen.findByText('Sub Folder A');
@@ -962,8 +962,8 @@ describe('DataroomViewer', () => {
       expect(docFetchCount('doc2')).toBe(1);
     });
 
-    // Navigate back out to the root list, then into the subfolder again.
-    fireEvent.click(screen.getByRole('button', { name: /^root$/i }));
+    // Navigate back out to the home/root list, then into the subfolder again.
+    fireEvent.click(screen.getByRole('button', { name: /^(home|root)$/i }));
     await screen.findByTitle('Sub Folder A');
     fireEvent.click(screen.getByTitle('Sub Folder A'));
     await screen.findByTitle('Sub Folder Document');
@@ -1034,4 +1034,186 @@ describe('DataroomViewer', () => {
       expect(screen.queryByText('No document view data available.')).not.toBeInTheDocument();
     });
   });
+
+  it('toggles view mode between list and grid and persists preference in localStorage', async () => {
+    localStorage.clear();
+    renderComponent();
+
+    const gridBtn = screen.getByRole('button', { name: /Grid view/i });
+    const listBtn = screen.getByRole('button', { name: /List view/i });
+
+    expect(listBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(gridBtn).toHaveAttribute('aria-pressed', 'false');
+
+    // Switch to grid view
+    fireEvent.click(gridBtn);
+    expect(gridBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(localStorage.getItem('coneshare_dataroom_view_mode')).toBe('grid');
+
+    // In grid view, document card is rendered
+    expect(screen.getByTestId('document-card-doc1')).toBeInTheDocument();
+
+    // Switch back to list view
+    fireEvent.click(listBtn);
+    expect(listBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(localStorage.getItem('coneshare_dataroom_view_mode')).toBe('list');
+    expect(screen.queryByTestId('document-card-doc1')).not.toBeInTheDocument();
+  });
+
+  it('filters items in folder by search query and shows empty match state', async () => {
+    renderComponent();
+
+    const searchInput = screen.getByPlaceholderText(/Filter files in this folder/i);
+    expect(screen.getByText('Root Document')).toBeInTheDocument();
+    expect(screen.getByText('Sub Folder A')).toBeInTheDocument();
+
+    // Filter by 'Folder'
+    fireEvent.change(searchInput, { target: { value: 'Folder' } });
+    expect(screen.getByText('Sub Folder A')).toBeInTheDocument();
+    expect(screen.queryByText('Root Document')).not.toBeInTheDocument();
+
+    // Filter by nonexistent string
+    fireEvent.change(searchInput, { target: { value: 'nonexistent-query-xyz' } });
+    expect(screen.queryByText('Sub Folder A')).not.toBeInTheDocument();
+    expect(screen.queryByText('Root Document')).not.toBeInTheDocument();
+    expect(screen.getByText(/No files or folders match your filter/i)).toBeInTheDocument();
+  });
+
+  it('focuses search input when ⌘K keyboard shortcut is pressed', () => {
+    renderComponent();
+
+    const searchInput = screen.getByPlaceholderText(/Filter files in this folder/i);
+    const focusSpy = vi.spyOn(searchInput, 'focus');
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true });
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders permanently resident Folders and Documents sections with empty tips when sections have 0 items', () => {
+    render(
+      <MemoryRouter initialEntries={['/view/test-slug']}>
+        <DataroomViewer
+          data={{
+            ...mockDataroomData,
+            items: [{ type: 'document', id: 'doc1', name: 'Sole Document', document_type: 'pdf', updated_at: new Date().toISOString() }],
+          }}
+          slug="test-slug"
+          viewId="view-123"
+        />
+      </MemoryRouter>
+    );
+
+    // Folders section header is visible with count 0
+    expect(screen.getByText(/Folders \(0\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/No folders in this directory/i)).toBeInTheDocument();
+
+    // Documents section header is visible with Sole Document
+    expect(screen.getByText(/DOCUMENTS \(1\)/i)).toBeInTheDocument();
+    expect(screen.getByText('Sole Document')).toBeInTheDocument();
+  });
+
+  it('renders Featured resources grid when items have is_starred, and retains them in regular lists', async () => {
+    const dataroomWithStarred = {
+      ...mockDataroomData,
+      items: [
+        {
+          id: 'starred-folder-1',
+          name: '01 Highlight Folder',
+          type: 'folder',
+          is_starred: true,
+          allow_download: true,
+          updated_at: '2026-10-18T10:00:00Z',
+        },
+        {
+          id: 'starred-doc-2',
+          name: 'Executive Summary.pdf',
+          type: 'document',
+          document_type: 'pdf',
+          is_starred: true,
+          file_size: 1048576,
+          allow_download: true,
+          updated_at: '2026-10-19T10:00:00Z',
+        },
+        {
+          id: 'regular-doc-3',
+          name: 'Standard Annex.pdf',
+          type: 'document',
+          document_type: 'pdf',
+          is_starred: false,
+          file_size: 2048,
+          allow_download: true,
+          updated_at: '2026-10-17T10:00:00Z',
+        },
+      ],
+    };
+
+    render(
+      <MemoryRouter>
+        <DataroomViewer
+          data={dataroomWithStarred}
+          slug="test-slug"
+          viewId="view-123"
+        />
+      </MemoryRouter>
+    );
+
+    // Featured section is rendered with count 2
+    expect(screen.getByText(/Featured Resources \(2\)/i)).toBeInTheDocument();
+
+    // The starred items are also retained in regular sections (dual display)
+    expect(screen.getByText(/Folders \(1\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/DOCUMENTS \(2\)/i)).toBeInTheDocument();
+
+    // Star icon / badge is no longer rendered in the regular document/folder list items
+    expect(screen.queryByTitle('Featured')).not.toBeInTheDocument();
+  });
+
+  it('enables Q&A in DocumentViewerHeader when document is active and Q&A is enabled', async () => {
+    const dataroomDataWithQna = {
+      ...mockDataroomData,
+      link_settings: {
+        ...mockDataroomData.link_settings,
+        enable_qna: true,
+      },
+      items: [
+        {
+          id: 'doc-1',
+          name: 'Active Document.pdf',
+          type: 'document',
+          document_type: 'pdf',
+          preview_mode: 'client_pdf',
+          file_size: 1048576,
+        },
+      ],
+    };
+
+    render(
+      <MemoryRouter initialEntries={['/view/test-slug?dataroom_document_id=doc-1']}>
+        <DataroomViewer
+          data={dataroomDataWithQna}
+          slug="test-slug"
+          viewId="view-123"
+        />
+      </MemoryRouter>
+    );
+
+    // Document is active, so DocumentViewerHeader has Q&A button rendered
+    expect(screen.getByRole('button', { name: /Q&A/i })).toBeInTheDocument();
+  });
+
+  it('renders NDA badge in DocumentViewerHeader when publicMeta has require_nda true', () => {
+    render(
+      <MemoryRouter>
+        <DataroomViewer
+          data={mockDataroomData}
+          slug="test-slug"
+          viewId="view-123"
+          publicMeta={{ require_nda: true }}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('header-nda-badge')).toBeInTheDocument();
+  });
 });
+

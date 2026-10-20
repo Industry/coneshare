@@ -37,7 +37,11 @@
     "status": "Status",
     "order": "Order",
     "images": "images",
-    "currentFile": "Current logo set"
+    "currentFile": "Current logo set",
+    "showAllFolders": "Show all {{count}} folders",
+    "showLess": "Show less",
+    "showingCount": "Showing {{count}}",
+    "actionsFor": "Actions for {{name}}"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -182,7 +186,10 @@
     "openFolderQna": "Open Q&A for current folder",
     "closeFolderQna": "Close Q&A for current folder",
     "threadsCount_one": "{{count}} thread",
-    "threadsCount_other": "{{count}} threads"
+    "threadsCount_other": "{{count}} threads",
+    "folderQna": "Folder Q&A",
+    "askQuestion": "Ask question",
+    "threadsCount": "{{count}} threads"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -403,7 +410,11 @@
     "processingStatus": "Processing",
     "errorStatus": "Error",
     "collaboratorAccessNoticeTitle": "Dataroom Shared Document",
-    "collaboratorAccessNoticeDesc": "You have view-only collaborator access to this document via a shared Dataroom. Direct share links, visitor tracking logs, and link security settings are managed exclusively by the document owner or organization administrators."
+    "collaboratorAccessNoticeDesc": "You have view-only collaborator access to this document via a shared Dataroom. Direct share links, visitor tracking logs, and link security settings are managed exclusively by the document owner or organization administrators.",
+    "documents": "Documents",
+    "documentsWithCount": "DOCUMENTS ({{count}})",
+    "folders": "Folders",
+    "loadMore": "Load more"
   },
   "datarooms": {
     "title": "Datarooms",
@@ -747,6 +758,10 @@
     "root": "Root",
     "loadingDocument": "Loading document...",
     "emptyFolder": "This folder is empty.",
+    "noFolders": "No folders in this directory",
+    "noDocuments": "No documents in this directory",
+    "noMatchingFolders": "No folders match your filter",
+    "noMatchingDocuments": "No documents match your filter",
     "preview": "Preview",
     "previousFile": "Previous file",
     "previousPage": "Previous page",
@@ -781,7 +796,28 @@
     "watermarkedVideoBlockedNotice": "This video exceeds the size limit to preview, and download is restricted due to watermark requirements.",
     "downloadRestricted": "Download Restricted",
     "loadingMarkdown": "Loading Markdown document...",
-    "previewFailed": "Preview unavailable"
+    "previewFailed": "Preview unavailable",
+    "watermarked": "Watermarked",
+    "confidentialWatermarked": "Confidential · Watermarked",
+    "ndaActive": "NDA Active",
+    "visitorMode": "Visitor Mode",
+    "previewMode": "Customer View · Read-Only",
+    "virtualDataroom": "Virtual Dataroom",
+    "defaultHeroDescription": "Curated architecture blueprints, third-party audit reports, and enterprise product documentation shared securely via Coneshare.",
+    "viewDocument": "View Document",
+    "watchVideo": "Watch Video",
+    "filterPlaceholder": "Filter files in this folder... ⌘K",
+    "gridView": "Grid view",
+    "listView": "List view",
+    "viewMode": "View Mode",
+    "noMatchingFiles": "No files or folders match your filter.",
+    "featuredResources": "Featured Resources",
+    "featured": "Featured",
+    "openFolder": "Open Folder",
+    "loading": "Loading...",
+    "restrictedConfidential": "RESTRICTED CONFIDENTIAL",
+    "bannerGallery": "Interactive banner gallery",
+    "goToSlide": "Go to slide {{number}}"
   },
   "viewSessions": {
     "unknownLocation": "Unknown location",

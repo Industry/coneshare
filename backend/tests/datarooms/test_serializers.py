@@ -315,6 +315,13 @@ class TestPublicDataroomSerializers:
         assert data['name'] == document.name
         assert data['allow_download'] is False  # From context
         assert data['enable_watermark'] is False  # From context
+        assert data['is_starred'] is False
+
+        # Test with is_starred=True
+        ddoc.is_starred = True
+        ddoc.save()
+        starred_data = PublicDataroomDocumentSerializer(instance=ddoc, context=context).data
+        assert starred_data['is_starred'] is True
 
     def test_public_folder_serializer(self, dataroom, user):
         """
@@ -336,6 +343,13 @@ class TestPublicDataroomSerializers:
         assert data['id'] == str(dfolder.id)
         assert data['name'] == "Test Folder"
         assert data['allow_download'] is True  # From context
+        assert data['is_starred'] is False
+
+        # Test with is_starred=True
+        dfolder.is_starred = True
+        dfolder.save()
+        starred_folder_data = PublicDataroomFolderSerializer(instance=dfolder, context=context).data
+        assert starred_folder_data['is_starred'] is True
 
 
 class TestEnsureDataroomFolderPathsSerializer:

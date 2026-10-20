@@ -645,7 +645,7 @@ class PublicDataroomDocumentSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'document_id', 'document_type',
             'num_pages', 'allow_download', 'enable_watermark', 'updated_at', 'file_size',
-            'parent'
+            'parent', 'is_starred'
         ]
 
     def get_name(self, obj):
@@ -668,7 +668,7 @@ class PublicDataroomFolderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DataroomFolder
-        fields = ['id', 'name', 'parent', 'allow_download', 'enable_watermark', 'updated_at']
+        fields = ['id', 'name', 'parent', 'allow_download', 'enable_watermark', 'updated_at', 'is_starred']
 
     def get_allow_download(self, obj):
         settings = self.context.get('settings_map', {})

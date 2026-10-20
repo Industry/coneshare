@@ -20,7 +20,7 @@ function buildWatermarkSvg(text) {
     .replace(/"/g, '&quot;');
   return `<svg xmlns="http://www.w3.org/2000/svg" width="340" height="180" viewBox="0 0 340 180">
     <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
-      transform="rotate(-28 170 90)" fill="#000000" font-family="sans-serif"
+      transform="rotate(-25 170 90)" fill="#000000" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
       font-size="14" font-weight="500" letter-spacing="0.5">${safe}</text>
   </svg>`;
 }
@@ -294,7 +294,7 @@ export const MarkdownViewer = forwardRef(({
           if (targetEl) {
             targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }
-        } catch (_err) {
+        } catch {
           // Fallback if selector parsing fails: container-scoped search without CSS.escape
           const el = Array.from(containerRef.current.querySelectorAll('[id], [name]')).find(
             (candidate) => {

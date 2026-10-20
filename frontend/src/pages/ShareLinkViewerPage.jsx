@@ -715,7 +715,6 @@ export function ShareLinkViewerPage() {
             <PdfJsViewer
               ref={viewerComponentRef}
               pdfUrl={viewData.pdf_preview_url}
-              title={viewData.name}
               viewId={viewId}
               dataroomVisitId={dataroomVisitId}
               watermarkText={

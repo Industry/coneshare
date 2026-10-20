@@ -243,4 +243,44 @@ describe('DataroomBannerGallery', () => {
       expect(screen.getByAltText('Acme Deal banner')).toBeInTheDocument();
     });
   });
+
+  describe('banner metadata and security overlay', () => {
+    it('renders metadata overlay with title, updated time, and NDA pill in single mode', () => {
+      render(
+        <DataroomBannerGallery
+          bannerMode="single"
+          singleBannerUrl="https://example.com/single.jpg"
+          dataroomName="Project Alpha"
+          updatedAt="2026-10-19T10:00:00Z"
+          isWatermarked={true}
+          isNdaProtected={true}
+        />
+      );
+
+      expect(screen.getByTestId('banner-metadata-overlay')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 2, name: 'Project Alpha' })).toBeInTheDocument();
+      expect(screen.getByTestId('banner-updated-time')).toBeInTheDocument();
+      expect(screen.getByTestId('banner-nda-pill')).toBeInTheDocument();
+      expect(screen.queryByTestId('banner-watermark-pill')).not.toBeInTheDocument();
+    });
+
+    it('renders security pills and updated time in multi-image gallery mode', () => {
+      render(
+        <DataroomBannerGallery
+          bannerMode="gallery"
+          images={sampleImages}
+          dataroomName="Project Multi"
+          updatedAt="2026-10-19T10:00:00Z"
+          isWatermarked={true}
+          isNdaProtected={true}
+        />
+      );
+
+      expect(screen.getByTestId('banner-updated-time')).toBeInTheDocument();
+      expect(screen.getByTestId('banner-security-pills')).toBeInTheDocument();
+      expect(screen.getByTestId('banner-nda-pill')).toBeInTheDocument();
+      expect(screen.queryByTestId('banner-watermark-pill')).not.toBeInTheDocument();
+    });
+  });
 });
+
