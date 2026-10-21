@@ -140,6 +140,20 @@ describe('ShareLinkViewerPage', () => {
     expect(screen.getByText('This link is expired.')).toBeInTheDocument();
   });
 
+  it('localizes error messages using getLocalizedErrorMessage', async () => {
+    api.getShareLinkPublicMeta.mockResolvedValue({ data: mockPublicMeta });
+    api.getShareLinkViewData.mockRejectedValue({
+      response: { data: { message: 'This link has expired.' } },
+    });
+
+    await i18n.changeLanguage('zh-hans');
+    renderComponent('/view/test-slug');
+
+    await waitFor(() => {
+      expect(screen.getByText('此链接已到期。')).toBeInTheDocument();
+    });
+  });
+
   it('renders PasswordForm when protectionType is password', async () => {
     api.getShareLinkPublicMeta.mockResolvedValue({ data: mockPublicMeta });
     api.getShareLinkViewData.mockRejectedValue({

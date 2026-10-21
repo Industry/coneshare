@@ -62,7 +62,7 @@ describe('EmailForm', () => {
     expect(mockOnSuccess).toHaveBeenCalled();
   });
 
-  it('shows "check your email" message when verification is required', async () => {
+  it('shows "check your email" message when verification is required and allows changing email', async () => {
     api.requestShareLinkAccess.mockResolvedValue({
       data: {
         message: 'Verification link sent.',
@@ -87,6 +87,17 @@ describe('EmailForm', () => {
     expect(mockOnSuccess).not.toHaveBeenCalled();
     expect(screen.getByText(/a verification link has been sent to/i)).toBeInTheDocument();
     expect(screen.getByText('test@example.com')).toBeInTheDocument();
+
+    // Click "Use a different email address"
+    const switchButton = screen.getByRole('button', { name: /use a different email address/i });
+    fireEvent.click(switchButton);
+
+    // Should return to the email input form with Continue button enabled (not stuck in "Submitting")
+    expect(screen.getByLabelText(/email address/i)).toBeInTheDocument();
+    const newSubmitButton = screen.getByRole('button', { name: /continue/i });
+    expect(newSubmitButton).toBeInTheDocument();
+    expect(newSubmitButton).toBeEnabled();
+    expect(screen.queryByText(/submitting/i)).not.toBeInTheDocument();
   });
 
   it('handles API errors gracefully', async () => {
@@ -123,11 +134,13 @@ describe('EmailForm', () => {
 
     expect(screen.getByText(/you are verifying access to this document as/i)).toBeInTheDocument();
     expect(screen.getByText('confirm@example.com')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /continue to document/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /use a different email address/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /use a different email address/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /resend email/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/scanner safe/i)).not.toBeInTheDocument();
   });
 
-  it('calls confirmShareLinkEmailAccess and onSuccess when clicking Continue to Document', async () => {
+  it('calls confirmShareLinkEmailAccess and onSuccess when clicking Continue', async () => {
     api.confirmShareLinkEmailAccess.mockResolvedValue({
       data: { message: 'Access granted successfully.' },
     });
@@ -143,7 +156,7 @@ describe('EmailForm', () => {
       />
     );
 
-    const confirmButton = screen.getByRole('button', { name: /continue to document/i });
+    const confirmButton = screen.getByRole('button', { name: /continue/i });
     fireEvent.click(confirmButton);
 
     await waitFor(() => {
@@ -152,27 +165,6 @@ describe('EmailForm', () => {
 
     expect(toast.success).toHaveBeenCalledWith('Access granted.');
     expect(mockOnSuccess).toHaveBeenCalled();
-  });
-
-  it('switches to normal email input view when clicking Use a different email address', async () => {
-    render(
-      <EmailForm
-        slug={slug}
-        onSuccess={mockOnSuccess}
-        publicMeta={null}
-        requiresConfirmation={true}
-        emailToConfirm="confirm@example.com"
-        token="my-token-123"
-      />
-    );
-
-    expect(screen.queryByLabelText(/email address/i)).not.toBeInTheDocument();
-
-    const switchButton = screen.getByRole('button', { name: /use a different email address/i });
-    fireEvent.click(switchButton);
-
-    expect(screen.getByLabelText(/email address/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /continue/i })).toBeInTheDocument();
   });
 
   it('renders organization brand logo when logo_mode is "org"', () => {

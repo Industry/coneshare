@@ -47,7 +47,7 @@ describe('PasswordForm', () => {
     expect(screen.getByText('Pitch Deck')).toBeInTheDocument();
     expect(screen.getByText('This secure link is password protected. Enter the password below to continue.')).toBeInTheDocument();
     expect(screen.getByLabelText('Password')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Unlock Document' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument();
   });
 
   it('should update password input on user typing', async () => {
@@ -62,7 +62,7 @@ describe('PasswordForm', () => {
     renderComponent();
 
     const passwordInput = screen.getByLabelText('Password');
-    const submitButton = screen.getByRole('button', { name: 'Unlock Document' });
+    const submitButton = screen.getByRole('button', { name: 'Continue' });
 
     await userEvent.type(passwordInput, 'correct-password');
     await userEvent.click(submitButton);
@@ -81,7 +81,7 @@ describe('PasswordForm', () => {
     renderComponent();
 
     const passwordInput = screen.getByLabelText('Password');
-    const submitButton = screen.getByRole('button', { name: 'Unlock Document' });
+    const submitButton = screen.getByRole('button', { name: 'Continue' });
 
     await userEvent.type(passwordInput, 'wrong-password');
     await userEvent.click(submitButton);
@@ -91,7 +91,7 @@ describe('PasswordForm', () => {
     // Wait for the async actions to complete
     await vi.waitFor(() => {
       // The button should be enabled again
-      expect(screen.getByRole('button', { name: 'Unlock Document' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
     });
 
     // onSuccess should not have been called
