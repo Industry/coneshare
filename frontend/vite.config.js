@@ -8,9 +8,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // Merge chunks under 10KB to prevent Rollup from fragmenting small shared UI primitives (Input, Label, Badge, etc.) into micro-files, minimizing HTTP request count and RTT latency
-        experimentalMinChunkSize: 10000,
-        // Vendor chunking strategy: isolate heavy libraries and group shared primitives for optimal caching and on-demand loading
+        // Vendor & shared chunking strategy: isolate heavy libraries and group shared primitives for optimal caching and on-demand loading
         manualChunks(id) {
           if (id.includes('node_modules')) {
             // React runtime and routing core (global app baseline, long-term cacheable)
@@ -37,6 +35,11 @@ export default defineConfig({
             if (id.includes('node_modules/@radix-ui')) {
               return 'vendor-ui';
             }
+          }
+          // Shared internal UI primitives (Input, Label, Badge, FileTypeIcon, etc.)
+          // Grouping into a dedicated chunk prevents Rollup from fragmenting small components or accidentally merging them into admin routes
+          if (id.includes('/src/components/ui/') || id.includes('/src/components/documents/FileTypeIcon') || id.includes('/src/components/common/LanguagePicker')) {
+            return 'shared-ui';
           }
         },
       },

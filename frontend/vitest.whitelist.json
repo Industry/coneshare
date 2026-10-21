@@ -60,6 +60,8 @@
     "src/tests/components/viewer/DataroomFolderGrid.test.jsx",
     "src/tests/components/viewer/DataroomDocumentCard.test.jsx",
     "src/tests/components/viewer/DataroomDefaultHeroBanner.test.jsx",
-    "src/tests/components/viewer/DataroomFeaturedGrid.test.jsx"
+    "src/tests/components/viewer/DataroomFeaturedGrid.test.jsx",
+    "src/tests/components/viewer/DataroomLoadingProgress.test.jsx",
+    "src/tests/components/viewer/ViewerErrorBoundary.test.jsx"
   ]
 }
