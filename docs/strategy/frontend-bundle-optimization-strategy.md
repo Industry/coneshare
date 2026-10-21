@@ -63,7 +63,8 @@ flowchart TD
 | **Fallback Experience** | Global `<RouteLoadingFallback />` & Viewer `<Suspense>` | Provides smooth, non-blocking spinner transitions while lazily fetched route and viewer chunks load. |
 | **Framework Chunking** | `vendor-react` via `manualChunks` | Isolates `react`, `react-dom`, and `react-router` into a standalone chunk with stable hashes across deployments for browser cache persistence. |
 | **Heavy Dependency Isolation** | `vendor-pdfjs`, `vendor-hls`, `vendor-dndkit` | Isolates specialized heavy libraries so they are only requested when the relevant route or feature is loaded. |
-| **Icon & UI Micro-Chunk Consolidation** | `vendor-icons` (`lucide-react`) & `vendor-ui` (`@radix-ui`) | Eliminates Rollup "Chunk Fragmentation" where 20+ separate <1KB icon chunks were generated, reducing initial HTTP requests from 29 to 5~6. |
+| **Icon & UI Micro-Chunk Consolidation** | `vendor-icons` (`lucide-react`) & `vendor-ui` (`@radix-ui`) | Eliminates Rollup "Chunk Fragmentation" where 20+ separate <1KB icon chunks were generated, reducing initial HTTP requests from 29 to 13. |
+| **Micro-Chunk Elimination** | `output.experimentalMinChunkSize: 10000` | Automatically absorbs sub-10KB shared UI primitives (`Input`, `Label`, `Badge`, `LanguagePicker`) into consumer chunks, cutting Dataroom cold-start requests from 13 down to 6~7 without latency penalties. |
 | **Shared Utility Bleeding Prevention** | Avoid forcing shared utilities (`clsx`, `d3-*`, `es-toolkit`) into feature manual chunks | Prevents Rollup from creating circular cross-chunk dependencies that would trigger eager `<link rel="modulepreload">` tags in `index.html`. |
 
 ---
@@ -83,19 +84,27 @@ flowchart TD
 >
 > **Best Practice**: Explicitly consolidate frequently used design-system primitives into unified vendor chunks: `vendor-icons` for `lucide-react` and `vendor-ui` for `@radix-ui`. This collapses dozens of micro-requests into 2 cache-friendly bundles.
 
+> [!WARNING]
+> **Gotcha 3: Micro-Chunk Overhead for Sub-1KB Shared UI Primitives**:
+> Even with `vendor-icons` and `vendor-ui` consolidated, internal UI components (such as `components/ui/Input.jsx`, `Label.jsx`, `Badge.jsx`, or `LanguagePicker.jsx`) shared across 2+ dynamic routes were still split into tiny 0.8KB–1.5KB files. The HTTP round-trip latency (300–700ms each) and header overhead exceeded the payload size.
+>
+> **Best Practice**: Set `output.experimentalMinChunkSize: 10000` in Vite's Rollup options. Rollup automatically merges any chunk under 10KB into its consumer chunk, collapsing 35 sub-10KB chunks down to 3, and reducing cold-start requests from 13 to 6~7.
+
 ---
 
 ## 4. Measured Results
 
 All metrics were captured using the Docker frontend production build (`COMPOSE_PROJECT_NAME=coneshare docker-compose exec frontend npm run build`):
 
-| Build Artifact | Before Optimization | After Optimization | Delta |
+| Build Artifact / Metric | Before Optimization | Phase 1 (Route & Vendor Splitting) | Phase 2 (Micro-Chunk Merging) |
 | :--- | :--- | :--- | :--- |
-| **Main Entry (`index-*.js`)** | **2,939.78 kB** (865.81 kB gzip) | **692.06 kB** (217.59 kB gzip) | **-76.5% (-2.24 MB)** |
-| **React Runtime (`vendor-react-*.js`)** | Bundled in main | **337.57 kB** (106.45 kB gzip) | Independent long-term cache |
-| **Chart Engine (`recharts`)** | Bundled in main | **315.53 kB** (lazy chunk) | **0 kB for public visitors** |
-| **Drag & Drop (`@dnd-kit`)** | Bundled in main | Lazy chunk | **0 kB for public visitors** |
-| **Total Test Suite Stability** | 61 files (487 tests passed) | 61 files (487 tests passed) | **100% pass rate maintained** |
+| **Main Entry (`index-*.js`)** | **2,939.78 kB** (865.81 kB gzip) | **692.06 kB** (217.59 kB gzip) | **611.71 kB** (191.00 kB gzip) |
+| **Dataroom Cold-Start JS Requests** | **1 monolithic request** (2.94 MB) | **13 requests** (~1.1 MB) | **6~7 requests** (~1.0 MB) |
+| **Total Chunks Generated** | 1 chunk | 67 chunks (35 under 10KB) | 38 chunks (only 3 under 10KB) |
+| **React Runtime (`vendor-react-*.js`)** | Bundled in main | **337.57 kB** (106.45 kB gzip) | **337.57 kB** (106.45 kB gzip) |
+| **Chart Engine (`recharts`)** | Bundled in main | **315.53 kB** (lazy chunk) | **315.11 kB** (lazy chunk) |
+| **Drag & Drop (`@dnd-kit`)** | Bundled in main | Lazy chunk | Lazy chunk (0 kB for visitors) |
+| **Total Test Suite Stability** | 61 files (487 tests passed) | 61 files (487 tests passed) | **61 files (487 tests passed, 100%)** |
 
 ---
 
