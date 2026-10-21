@@ -36,11 +36,11 @@ Running bundle analysis within the Docker frontend container revealed the follow
 
 ```mermaid
 flowchart TD
-    IndexHtml["index.html"] --> IndexEntry["index.js (~692 kB)\nShared UI, Providers, Layout"]
+    IndexHtml["index.html"] --> IndexEntry["index.js (~512 kB)\nShared UI, Providers, Layout"]
     IndexHtml --> VendorReact["vendor-react.js (~337 kB)\nReact, ReactDOM, React-Router\n(Long-Term Cacheable)"]
 
     subgraph PublicRoutes["Public Visitor Boundary (/view/:slug, /upload/:slug)"]
-        IndexEntry -.->|React.lazy| ViewerPage["ShareLinkViewerPage.js (~90 kB)"]
+        IndexEntry -.->|React.lazy| ViewerPage["ShareLinkViewerPage.js (~39 kB)"]
         IndexEntry -.->|React.lazy| UploadPage["PublicUploadPage.js (~10 kB)"]
         ViewerPage -.->|Dynamic Import| VendorPdf["vendor-pdfjs.js (~409 kB)"]
         ViewerPage -.->|Dynamic Import| VendorHls["vendor-hls.js (~522 kB)"]
@@ -59,12 +59,12 @@ flowchart TD
 | Decision Area | Choice | Rationale |
 | :--- | :--- | :--- |
 | **Route-Level Splitting** | `React.lazy()` + `<Suspense>` in `App.jsx` | Breaks static dependency graph at the page level. Ensures admin, automation, and analytics code is never loaded on visitor routes. |
-| **Component-Level Viewer Lazy Loading** | `React.lazy()` for `PdfJsViewer`, `VideoViewer`, `MarkdownViewer`, `SpreadsheetViewer` in `ShareLinkViewerPage` and `DataroomViewer` | Prevents `vendor-pdfjs` (410 kB) and `vendor-hls` (523 kB) from eagerly downloading on initial Dataroom folder/file list views before opening documents. |
+| **Component-Level Viewer Lazy Loading** | `React.lazy()` for `PdfJsViewer`, `VideoViewer`, `MarkdownViewer`, `SpreadsheetViewer`, `PreviewViewer`, and `DataroomViewer` | Prevents `vendor-pdfjs` (410 kB), `vendor-hls` (523 kB), and `DataroomViewer` (52 kB) from downloading on initial gatekeeper or folder views before credentials are submitted or documents opened. |
 | **Fallback Experience** | Global `<RouteLoadingFallback />` & Viewer `<Suspense>` | Provides smooth, non-blocking spinner transitions while lazily fetched route and viewer chunks load. |
 | **Framework Chunking** | `vendor-react` via `manualChunks` | Isolates `react`, `react-dom`, and `react-router` into a standalone chunk with stable hashes across deployments for browser cache persistence. |
 | **Heavy Dependency Isolation** | `vendor-pdfjs`, `vendor-hls`, `vendor-dndkit` | Isolates specialized heavy libraries so they are only requested when the relevant route or feature is loaded. |
 | **Icon & UI Micro-Chunk Consolidation** | `vendor-icons` (`lucide-react`) & `vendor-ui` (`@radix-ui`) | Eliminates Rollup "Chunk Fragmentation" where 20+ separate <1KB icon chunks were generated, reducing initial HTTP requests from 29 to 13. |
-| **Micro-Chunk Elimination** | `output.experimentalMinChunkSize: 10000` | Automatically absorbs sub-10KB shared UI primitives (`Input`, `Label`, `Badge`, `LanguagePicker`) into consumer chunks, cutting Dataroom cold-start requests from 13 down to 6~7 without latency penalties. |
+| **Internal Shared UI Consolidation** | `shared-ui` in `manualChunks` | Explicitly groups `src/components/ui/`, `FileTypeIcon`, and `LanguagePicker` into a dedicated bundle, eliminating micro-chunks while avoiding Rollup route cross-contamination. |
 | **Shared Utility Bleeding Prevention** | Avoid forcing shared utilities (`clsx`, `d3-*`, `es-toolkit`) into feature manual chunks | Prevents Rollup from creating circular cross-chunk dependencies that would trigger eager `<link rel="modulepreload">` tags in `index.html`. |
 
 ---
@@ -85,10 +85,17 @@ flowchart TD
 > **Best Practice**: Explicitly consolidate frequently used design-system primitives into unified vendor chunks: `vendor-icons` for `lucide-react` and `vendor-ui` for `@radix-ui`. This collapses dozens of micro-requests into 2 cache-friendly bundles.
 
 > [!WARNING]
-> **Gotcha 3: Micro-Chunk Overhead for Sub-1KB Shared UI Primitives**:
-> Even with `vendor-icons` and `vendor-ui` consolidated, internal UI components (such as `components/ui/Input.jsx`, `Label.jsx`, `Badge.jsx`, or `LanguagePicker.jsx`) shared across 2+ dynamic routes were still split into tiny 0.8KB–1.5KB files. The HTTP round-trip latency (300–700ms each) and header overhead exceeded the payload size.
+> **Gotcha 3: Danger of `experimentalMinChunkSize` Merging Routes into Public Views**:
+> Setting `output.experimentalMinChunkSize: 10000` causes Rollup to blindly merge small route chunks (<10KB, e.g. `PasswordSettingsPage` and `AdminLoginActivityPage`) with shared UI components (`Label`, `FileTypeIcon`).
+> This caused public Dataroom visitors to download admin and settings code!
 >
-> **Best Practice**: Set `output.experimentalMinChunkSize: 10000` in Vite's Rollup options. Rollup automatically merges any chunk under 10KB into its consumer chunk, collapsing 35 sub-10KB chunks down to 3, and reducing cold-start requests from 13 to 6~7.
+> **Best Practice**: Avoid `experimentalMinChunkSize` when any route chunks are smaller than the threshold. Instead, explicitly declare a `shared-ui` chunk in `manualChunks` to bundle shared components safely.
+
+> [!WARNING]
+> **Gotcha 4: Eager Dataroom Viewers on Protected Link Gates**:
+> When `DataroomViewer` was statically imported in `ShareLinkViewerPage`, any visitor hitting a password, email, or NDA protected link immediately downloaded all Dataroom list grids, trees, banners, and viewer tools before entering credentials.
+>
+> **Best Practice**: Lazy-load `DataroomViewer` via `React.lazy()` wrapped in `<Suspense>`. Unauthenticated visitors only download the lightweight `PasswordForm` / `EmailForm` / `NDAForm` dialog, rendering the gate in <100ms.
 
 ---
 
@@ -96,13 +103,15 @@ flowchart TD
 
 All metrics were captured using the Docker frontend production build (`COMPOSE_PROJECT_NAME=coneshare docker-compose exec frontend npm run build`):
 
-| Build Artifact / Metric | Before Optimization | Phase 1 (Route & Vendor Splitting) | Phase 2 (Micro-Chunk Merging) |
+| Build Artifact / Metric | Before Optimization | Route & Vendor Splitting | Final (shared-ui & Gatekeeper Lazy) |
 | :--- | :--- | :--- | :--- |
-| **Main Entry (`index-*.js`)** | **2,939.78 kB** (865.81 kB gzip) | **692.06 kB** (217.59 kB gzip) | **611.71 kB** (191.00 kB gzip) |
-| **Dataroom Cold-Start JS Requests** | **1 monolithic request** (2.94 MB) | **13 requests** (~1.1 MB) | **6~7 requests** (~1.0 MB) |
-| **Total Chunks Generated** | 1 chunk | 67 chunks (35 under 10KB) | 38 chunks (only 3 under 10KB) |
+| **Main Entry (`index-*.js`)** | **2,939.78 kB** (865.81 kB gzip) | **692.06 kB** (217.59 kB gzip) | **511.67 kB** (157.54 kB gzip) |
+| **Protected Gate Cold-Start Requests** | **1 monolithic request** (2.94 MB) | **13 requests** (~1.1 MB) | **5 requests** (~450 kB / 150 kB gzip) |
+| **DataroomViewer Chunk** | Statically in main | Bundled in ShareLinkViewerPage (90 kB) | **Independent on-demand chunk** (52.6 kB) |
+| **ShareLinkViewerPage Chunk** | Bundled in main | 90.41 kB (20.11 kB gzip) | **39.39 kB** (9.76 kB gzip) |
+| **Admin Route Isolation** | Leaked in main | Leaked via minChunkSize | **100% Isolated** (0 admin bytes on visitor routes) |
 | **React Runtime (`vendor-react-*.js`)** | Bundled in main | **337.57 kB** (106.45 kB gzip) | **337.57 kB** (106.45 kB gzip) |
-| **Chart Engine (`recharts`)** | Bundled in main | **315.53 kB** (lazy chunk) | **315.11 kB** (lazy chunk) |
+| **Chart Engine (`recharts`)** | Bundled in main | **315.53 kB** (lazy chunk) | **315.06 kB** (lazy chunk) |
 | **Drag & Drop (`@dnd-kit`)** | Bundled in main | Lazy chunk | Lazy chunk (0 kB for visitors) |
 | **Total Test Suite Stability** | 61 files (487 tests passed) | 61 files (487 tests passed) | **61 files (487 tests passed, 100%)** |
 

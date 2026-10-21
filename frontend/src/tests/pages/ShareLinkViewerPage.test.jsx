@@ -109,6 +109,19 @@ describe('ShareLinkViewerPage', () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
+  it('shows DataroomLoadingProgress when publicMeta is a dataroom during loading', async () => {
+    api.getShareLinkPublicMeta.mockResolvedValue({
+      data: { target_type: 'dataroom', target_name: 'Confidential M&A', owner_name: 'Alice Owner' },
+    });
+    api.getShareLinkViewData.mockReturnValue(new Promise(() => {})); // Never resolves
+    renderComponent('/view/test-slug');
+
+    await waitFor(() => {
+      expect(screen.getByText('Confidential M&A')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toBeInTheDocument();
+    });
+  });
+
   it('shows error message on API failure', async () => {
     api.getShareLinkPublicMeta.mockResolvedValue({ data: mockPublicMeta });
     api.getShareLinkViewData.mockRejectedValue({
@@ -479,8 +492,8 @@ describe('ShareLinkViewerPage', () => {
 
       renderComponent('/view/test-slug');
 
-      await screen.findByTitle('Document 1');
-      await screen.findByTitle('Document 2');
+      await screen.findByTitle('Document 1', {}, { timeout: 3000 });
+      await screen.findByTitle('Document 2', {}, { timeout: 3000 });
 
       api.getShareLinkViewData.mockClear();
       api.recordDataroomVisit.mockClear();
