@@ -384,7 +384,8 @@ COMPOSE_PROJECT_NAME=coneshare docker-compose exec frontend npm test -- --run sr
   3. Structured folder cards with horizontal divider line, bottom timestamp, chevron right navigation affordance, and consolidated download into 3-dots actions menu.
   4. Aligned Watermarked badge to neutral muted theme (`text-gray-500 dark:text-gray-400`) and synchronized translations across all 6 locales.
 
-### 2026-10-20 Session Entry
+### 2026-10-21 Session Entry
 - **Category:** Architecture Choice / Gotcha
-- **Context/Implication:** Frontend production bundle was ~2.94MB due to monolithic static page imports in `App.jsx`, causing slow initial loads for public dataroom visitors. Additionally, naive Rollup `manualChunks` grouping sub-dependencies (like `d3-*` with `recharts`) caused shared utility bleeding and unintended modulepreload in `index.html`.
-- **Resolution/Action:** Applied route-level code splitting using `React.lazy()` with `<Suspense>` across all pages in `App.jsx`, and configured Vite `manualChunks` strictly for clean top-level vendors (`vendor-react`, `vendor-pdfjs`, `vendor-hls`, `vendor-dndkit`). Documented strategy in `docs/strategy/frontend-bundle-optimization-strategy.md`.
+- **Context/Implication:** Frontend production bundle was ~2.94MB and initial Dataroom visits triggered 29 HTTP requests. Route-level splitting alone caused severe Rollup chunk fragmentation (20+ <1KB micro-chunks for individual Lucide icons and UI primitives). Additionally, static viewer imports in `ShareLinkViewerPage` and `DataroomViewer` eagerly downloaded 933KB of `vendor-pdfjs` and `vendor-hls` on initial folder views before opening any document.
+- **Resolution/Action:** 1. Consolidated `lucide-react` into `vendor-icons` and `@radix-ui` into `vendor-ui` in `vite.config.js` manualChunks to eliminate micro-requests. 2. Implemented component-level `React.lazy()` with `<Suspense>` for `PdfJsViewer`, `VideoViewer`, `MarkdownViewer`, and `SpreadsheetViewer` in `ShareLinkViewerPage.jsx` and `DataroomViewer.jsx`. Documented strategy in `docs/strategy/frontend-bundle-optimization-strategy.md`.
+

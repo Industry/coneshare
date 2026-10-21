@@ -59,9 +59,11 @@ flowchart TD
 | Decision Area | Choice | Rationale |
 | :--- | :--- | :--- |
 | **Route-Level Splitting** | `React.lazy()` + `<Suspense>` in `App.jsx` | Breaks static dependency graph at the page level. Ensures admin, automation, and analytics code is never loaded on visitor routes. |
-| **Fallback Experience** | Global `<RouteLoadingFallback />` | Provides smooth, non-blocking spinner transition while lazily fetched route chunks load. |
+| **Component-Level Viewer Lazy Loading** | `React.lazy()` for `PdfJsViewer`, `VideoViewer`, `MarkdownViewer`, `SpreadsheetViewer` in `ShareLinkViewerPage` and `DataroomViewer` | Prevents `vendor-pdfjs` (410 kB) and `vendor-hls` (523 kB) from eagerly downloading on initial Dataroom folder/file list views before opening documents. |
+| **Fallback Experience** | Global `<RouteLoadingFallback />` & Viewer `<Suspense>` | Provides smooth, non-blocking spinner transitions while lazily fetched route and viewer chunks load. |
 | **Framework Chunking** | `vendor-react` via `manualChunks` | Isolates `react`, `react-dom`, and `react-router` into a standalone chunk with stable hashes across deployments for browser cache persistence. |
 | **Heavy Dependency Isolation** | `vendor-pdfjs`, `vendor-hls`, `vendor-dndkit` | Isolates specialized heavy libraries so they are only requested when the relevant route or feature is loaded. |
+| **Icon & UI Micro-Chunk Consolidation** | `vendor-icons` (`lucide-react`) & `vendor-ui` (`@radix-ui`) | Eliminates Rollup "Chunk Fragmentation" where 20+ separate <1KB icon chunks were generated, reducing initial HTTP requests from 29 to 5~6. |
 | **Shared Utility Bleeding Prevention** | Avoid forcing shared utilities (`clsx`, `d3-*`, `es-toolkit`) into feature manual chunks | Prevents Rollup from creating circular cross-chunk dependencies that would trigger eager `<link rel="modulepreload">` tags in `index.html`. |
 
 ---
@@ -69,11 +71,17 @@ flowchart TD
 ## 3. Rollup Manual Chunking Gotchas
 
 > [!WARNING]
-> **Avoid Module Bleeding into Feature Chunks**:
+> **Gotcha 1: Avoid Module Bleeding into Feature Chunks**:
 > When configuring `output.manualChunks(id)`, if a library like `recharts` depends on `d3-time-format` or `clsx`, and you group `d3-` into `vendor-recharts`, Rollup may place common utilities into `vendor-recharts`.
 > If `index.js` also needs `clsx` or common formatting, `index.js` will statically import from `vendor-recharts`, which forces Vite to add `<link rel="modulepreload" href="vendor-recharts.js">` directly to `index.html`!
 >
 > **Best Practice**: Only match discrete, well-bounded top-level vendor directories (e.g., `node_modules/hls.js`, `node_modules/pdfjs-dist`, `node_modules/@dnd-kit`). Allow Rollup to naturally chunk internal feature dependencies (`recharts` inside `HomePage`) via route-level `React.lazy()`.
+
+> [!WARNING]
+> **Gotcha 2: Chunk Fragmentation from Cross-Route Shared Primitives**:
+> When using `React.lazy` across multiple pages, any small dependency (such as individual icons from `lucide-react` or Radix UI components) referenced by more than one dynamic chunk will be split by Rollup into individual ~0.8KB micro-files. This causes browsers to dispatch 25–30+ HTTP requests on cold start.
+>
+> **Best Practice**: Explicitly consolidate frequently used design-system primitives into unified vendor chunks: `vendor-icons` for `lucide-react` and `vendor-ui` for `@radix-ui`. This collapses dozens of micro-requests into 2 cache-friendly bundles.
 
 ---
 

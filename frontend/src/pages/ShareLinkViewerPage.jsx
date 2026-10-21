@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { FileDown, MessageCircle, Info, X, AlertTriangle } from 'lucide-react';
 import { PasswordForm } from '../components/viewer/PasswordForm';
@@ -6,13 +6,14 @@ import { EmailForm } from '../components/viewer/EmailForm';
 import { NDAForm } from '../components/viewer/NDAForm';
 import { ViewerToolbar } from '../components/viewer/ViewerToolbar';
 import { PreviewViewer } from '../components/documents/PreviewViewer';
-import { PdfJsViewer } from '../components/documents/PdfJsViewer';
-import { VideoViewer } from '../components/documents/VideoViewer';
-import { SpreadsheetViewer } from '../components/documents/SpreadsheetViewer';
-import { MarkdownViewer } from '../components/documents/MarkdownViewer';
 import { DataroomViewer } from '../components/viewer/DataroomViewer';
 import { DocumentViewerHeader } from '../components/viewer/DocumentViewerHeader';
 import { QnAPanel } from '../components/viewer/QnAPanel';
+
+const PdfJsViewer = lazy(() => import('../components/documents/PdfJsViewer').then(m => ({ default: m.PdfJsViewer })));
+const VideoViewer = lazy(() => import('../components/documents/VideoViewer').then(m => ({ default: m.VideoViewer })));
+const SpreadsheetViewer = lazy(() => import('../components/documents/SpreadsheetViewer').then(m => ({ default: m.SpreadsheetViewer })));
+const MarkdownViewer = lazy(() => import('../components/documents/MarkdownViewer').then(m => ({ default: m.MarkdownViewer })));
 import { printPdf, printImages } from '../lib/print';
 import { Skeleton } from '../components/ui/Skeleton';
 import {
@@ -669,74 +670,82 @@ export function ShareLinkViewerPage() {
               onPrint={handlePrint}
             />
           )}
-          {viewData.preview_mode === 'video' ? (
-            <div className="flex h-full w-full items-center justify-center p-8">
-              <VideoViewer
+          <Suspense
+            fallback={
+              <div className="flex h-full w-full items-center justify-center p-8">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+              </div>
+            }
+          >
+            {viewData.preview_mode === 'video' ? (
+              <div className="flex h-full w-full items-center justify-center p-8">
+                <VideoViewer
+                  ref={viewerComponentRef}
+                  videoUrl={viewData.video_preview_url}
+                  viewId={viewId}
+                  dataroomVisitId={dataroomVisitId}
+                  allowDownload={viewData.link_settings?.allow_download}
+                  downloadUrl={downloadUrl}
+                />
+              </div>
+            ) : viewData.preview_mode === 'spreadsheet' ? (
+              <SpreadsheetViewer
                 ref={viewerComponentRef}
-                videoUrl={viewData.video_preview_url}
+                spreadsheetUrl={viewData.spreadsheet_preview_url}
+                title={viewData.name}
+                watermarkText={
+                  viewData.link_settings?.enable_watermark
+                    ? (viewData.link_settings.resolved_watermark_text || viewData.link_settings.watermark_text || '')
+                    : ''
+                }
+                allowDownload={viewData.link_settings?.allow_download ?? true}
+                zoomLevel={zoomLevel}
+                documentData={viewData}
+              />
+            ) : viewData.preview_mode === 'markdown' ? (
+              <MarkdownViewer
+                ref={viewerComponentRef}
+                markdownUrl={viewData.markdown_preview_url}
+                title={viewData.name}
                 viewId={viewId}
                 dataroomVisitId={dataroomVisitId}
-                allowDownload={viewData.link_settings?.allow_download}
-                downloadUrl={downloadUrl}
+                watermarkText={
+                  viewData.link_settings?.enable_watermark
+                    ? (viewData.link_settings.resolved_watermark_text || viewData.link_settings.watermark_text || '')
+                    : ''
+                }
+                allowDownload={viewData.link_settings?.allow_download ?? true}
+                canCopy={viewData.link_settings?.can_copy ?? null}
+                zoomLevel={zoomLevel}
+                documentData={viewData}
               />
-            </div>
-          ) : viewData.preview_mode === 'spreadsheet' ? (
-            <SpreadsheetViewer
-              ref={viewerComponentRef}
-              spreadsheetUrl={viewData.spreadsheet_preview_url}
-              title={viewData.name}
-              watermarkText={
-                viewData.link_settings?.enable_watermark
-                  ? (viewData.link_settings.resolved_watermark_text || viewData.link_settings.watermark_text || '')
-                  : ''
-              }
-              allowDownload={viewData.link_settings?.allow_download ?? true}
-              zoomLevel={zoomLevel}
-              documentData={viewData}
-            />
-          ) : viewData.preview_mode === 'markdown' ? (
-            <MarkdownViewer
-              ref={viewerComponentRef}
-              markdownUrl={viewData.markdown_preview_url}
-              title={viewData.name}
-              viewId={viewId}
-              dataroomVisitId={dataroomVisitId}
-              watermarkText={
-                viewData.link_settings?.enable_watermark
-                  ? (viewData.link_settings.resolved_watermark_text || viewData.link_settings.watermark_text || '')
-                  : ''
-              }
-              allowDownload={viewData.link_settings?.allow_download ?? true}
-              canCopy={viewData.link_settings?.can_copy ?? null}
-              zoomLevel={zoomLevel}
-              documentData={viewData}
-            />
-          ) : viewData.preview_mode === 'client_pdf' ? (
-            <PdfJsViewer
-              ref={viewerComponentRef}
-              pdfUrl={viewData.pdf_preview_url}
-              viewId={viewId}
-              dataroomVisitId={dataroomVisitId}
-              watermarkText={
-                viewData.link_settings?.enable_watermark
-                  ? (viewData.link_settings.resolved_watermark_text || viewData.link_settings.watermark_text || '')
-                  : ''
-              }
-              zoomLevel={zoomLevel}
-              onPageChange={setCurrentPage}
-              onDocumentLoad={handleDocumentLoad}
-              documentData={viewData}
-            />
-          ) : (
-            <PreviewViewer
-              ref={viewerComponentRef}
-              documentData={viewData}
-              zoomLevel={zoomLevel}
-              onPageChange={setCurrentPage}
-              viewId={viewId}
-              dataroomVisitId={dataroomVisitId}
-            />
-          )}
+            ) : viewData.preview_mode === 'client_pdf' ? (
+              <PdfJsViewer
+                ref={viewerComponentRef}
+                pdfUrl={viewData.pdf_preview_url}
+                viewId={viewId}
+                dataroomVisitId={dataroomVisitId}
+                watermarkText={
+                  viewData.link_settings?.enable_watermark
+                    ? (viewData.link_settings.resolved_watermark_text || viewData.link_settings.watermark_text || '')
+                    : ''
+                }
+                zoomLevel={zoomLevel}
+                onPageChange={setCurrentPage}
+                onDocumentLoad={handleDocumentLoad}
+                documentData={viewData}
+              />
+            ) : (
+              <PreviewViewer
+                ref={viewerComponentRef}
+                documentData={viewData}
+                zoomLevel={zoomLevel}
+                onPageChange={setCurrentPage}
+                viewId={viewId}
+                dataroomVisitId={dataroomVisitId}
+              />
+            )}
+          </Suspense>
           <QnAPanel
             open={isQnaEnabled && isQnaOpen}
             onOpenChange={setIsQnaOpen}

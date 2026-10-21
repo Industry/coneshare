@@ -22,6 +22,12 @@ export default defineConfig({
             if (id.includes('node_modules/@dnd-kit')) {
               return 'vendor-dndkit';
             }
+            if (id.includes('node_modules/lucide-react')) {
+              return 'vendor-icons';
+            }
+            if (id.includes('node_modules/@radix-ui')) {
+              return 'vendor-ui';
+            }
           }
         },
       },
