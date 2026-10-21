@@ -44,6 +44,10 @@ vi.mock('../../components/documents/PreviewViewer', () => ({
   PreviewViewer: () => <div>Preview Viewer</div>,
 }));
 
+vi.mock('../../components/documents/PreviewStatePanel', () => ({
+  PreviewStatePanel: () => <div>This may take a moment for large documents.</div>,
+}));
+
 vi.mock('../../components/documents/PdfJsViewer', () => ({
   PdfJsViewer: () => <div>PdfJs Viewer</div>,
 }));
@@ -230,8 +234,9 @@ describe('ShareLinkViewerPage', () => {
 
     renderComponent('/view/test-slug');
 
-    // Flush initial mock promises
+    // Flush initial mock promises and lazy component
     await act(async () => {
+      await Promise.resolve();
       await Promise.resolve();
     });
 

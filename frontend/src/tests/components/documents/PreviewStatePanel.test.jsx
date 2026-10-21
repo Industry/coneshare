@@ -1,12 +1,12 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import i18n from '../../../i18n';
+import { PreviewStatePanel } from '../../../components/documents/PreviewStatePanel';
 import {
-  PreviewStatePanel,
   isPreviewPending,
   isPreviewFailed,
   hasRenderablePages,
-} from '../../../components/documents/PreviewStatePanel';
+} from '../../../utils/previewState';
 
 describe('PreviewStatePanel Helper Functions', () => {
   it('identifies pending preview statuses correctly', () => {

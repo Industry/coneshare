@@ -42,8 +42,8 @@ import { printPdf, printImages } from '../../lib/print';
 import {
   hasRenderablePages,
   isPreviewPending,
-  PreviewStatePanel,
-} from '../documents/PreviewStatePanel';
+} from '../../utils/previewState';
+import { PreviewStatePanel } from '../documents/PreviewStatePanel';
 import {
   downloadDataroomFolder,
   getPublicQnaSummary,

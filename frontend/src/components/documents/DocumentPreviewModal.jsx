@@ -8,12 +8,12 @@ import {
 } from '../ui/Dialog';
 import { Skeleton } from '../ui/Skeleton';
 import { PreviewViewer } from './PreviewViewer';
+import { PreviewStatePanel } from './PreviewStatePanel';
 import {
   hasRenderablePages,
   isPreviewPending,
   isPreviewFailed,
-  PreviewStatePanel,
-} from './PreviewStatePanel';
+} from '../../utils/previewState';
 import { PdfJsViewer } from './PdfJsViewer';
 import { VideoViewer } from './VideoViewer';
 import { SpreadsheetViewer } from './SpreadsheetViewer';

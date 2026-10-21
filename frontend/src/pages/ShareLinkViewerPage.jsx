@@ -16,14 +16,14 @@ const PdfJsViewer = lazy(() => import('../components/documents/PdfJsViewer').the
 const VideoViewer = lazy(() => import('../components/documents/VideoViewer').then(m => ({ default: m.VideoViewer })));
 const SpreadsheetViewer = lazy(() => import('../components/documents/SpreadsheetViewer').then(m => ({ default: m.SpreadsheetViewer })));
 const MarkdownViewer = lazy(() => import('../components/documents/MarkdownViewer').then(m => ({ default: m.MarkdownViewer })));
+const PreviewStatePanel = lazy(() => import('../components/documents/PreviewStatePanel').then(m => ({ default: m.PreviewStatePanel })));
 import { printPdf, printImages } from '../lib/print';
 import { Skeleton } from '../components/ui/Skeleton';
 import {
   hasRenderablePages,
   isPreviewFailed,
   isPreviewPending,
-  PreviewStatePanel,
-} from '../components/documents/PreviewStatePanel';
+} from '../utils/previewState';
 import {
   createViewSession,
   getPublicQnaSummary,
@@ -626,11 +626,21 @@ export function ShareLinkViewerPage() {
           hasViewSession={Boolean(viewId)}
         />
         <div className="flex-1 flex items-center justify-center p-4 overflow-hidden">
-          <PreviewStatePanel
-            documentData={viewData}
-            allowDownload={canDownload}
-            downloadUrl={downloadUrl}
-          />
+          <ViewerErrorBoundary>
+            <Suspense
+              fallback={
+                <div className="flex h-full w-full items-center justify-center p-8">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+                </div>
+              }
+            >
+              <PreviewStatePanel
+                documentData={viewData}
+                allowDownload={canDownload}
+                downloadUrl={downloadUrl}
+              />
+            </Suspense>
+          </ViewerErrorBoundary>
         </div>
         <QnAPanel
           open={isQnaVisible && isQnaOpen}

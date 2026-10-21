@@ -6,19 +6,7 @@ import { formatBytes } from '../../lib/formatters';
 import { getLocalizedErrorMessage } from '../../utils/errorTranslator';
 import { FileTypeIcon } from './FileTypeIcon';
 
-/* eslint-disable react-refresh/only-export-components */
-export function isPreviewPending(documentData) {
-  return ['not_generated', 'processing'].includes(documentData?.preview_status);
-}
-
-export function isPreviewFailed(documentData) {
-  return documentData?.preview_status === 'failed' || documentData?.render_status === 'failed';
-}
-
-export function hasRenderablePages(documentData) {
-  return Array.isArray(documentData?.pages) && documentData.pages.length > 0;
-}
-/* eslint-enable react-refresh/only-export-components */
+import { isPreviewPending, isPreviewFailed } from '../../utils/previewState';
 
 export function PreviewStatePanel({
   documentData,
