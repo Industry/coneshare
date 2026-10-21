@@ -336,7 +336,10 @@ export function DataroomPage() {
       id: item.id,
       name: item.name,
       type: item.type,
+      document_type: item.document_type || item.type,
+      file_size: item.file_size,
       created_at: item.created_at,
+      updated_at: item.updated_at,
     }));
   }, [items]);
 

@@ -1,6 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowDown, ArrowUp, FileIcon, FolderIcon, GripVertical, Loader2 } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Check,
+  Folder,
+  GripVertical,
+  Loader2,
+  RotateCcw,
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -10,24 +19,124 @@ import {
   DialogTitle,
 } from '../ui/Dialog';
 import { Button } from '../ui/Button';
+import { FileTypeIcon, getDocumentBadgeStyle } from '../documents/FileTypeIcon';
+import { formatBytes } from '../../lib/formatters';
+import { formatRelativeTime } from '../../utils/formatters';
 
 function moveItem(list, from, to) {
+  if (to < 0 || to >= list.length) return list;
   const next = [...list];
   const [item] = next.splice(from, 1);
   next.splice(to, 0, item);
   return next;
 }
 
-function resetToFoldersFirst(items) {
-  const sorted = [...items];
-  sorted.sort((a, b) => {
-    if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+function sortAlphabeticalChronological(list) {
+  return [...list].sort((a, b) => {
     const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
     const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
     if (aTime !== bTime) return aTime - bTime;
-    return String(a.id).localeCompare(String(b.id));
+    return String(a.name || a.id).localeCompare(String(b.name || b.id));
   });
-  return sorted;
+}
+
+function ReorderRow({
+  item,
+  index,
+  total,
+  isSaving,
+  onDragStart,
+  onDrop,
+  onMoveUp,
+  onMoveDown,
+}) {
+  const { t } = useTranslation();
+  const isFirst = index === 0;
+  const isLast = index === total - 1;
+  const isFolder = item.type === 'folder';
+  const docType = item.document_type || item.type;
+
+  return (
+    <li
+      draggable={!isSaving}
+      onDragStart={onDragStart}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDrop}
+      className="group flex items-center justify-between px-3 py-2.5 bg-slate-50/70 hover:bg-slate-100/70 dark:bg-zinc-900/40 dark:hover:bg-zinc-900/80 border border-slate-200/80 dark:border-zinc-800 rounded-xl transition duration-150 gap-2"
+    >
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <button
+          type="button"
+          className="cursor-grab active:cursor-grabbing text-slate-400 group-hover:text-slate-600 dark:text-zinc-500 p-0.5"
+          title={t('datarooms.dragToReorder', { defaultValue: 'Drag to reorder' })}
+          tabIndex={-1}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <span className="font-mono text-xs font-semibold text-slate-600 dark:text-zinc-300 bg-white dark:bg-zinc-800 border border-slate-200/80 dark:border-zinc-700 px-2 py-0.5 rounded shadow-xs shrink-0">
+          {String(index + 1).padStart(2, '0')}
+        </span>
+        {isFolder ? (
+          <div className="w-7 h-7 rounded-lg bg-amber-100/70 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 flex items-center justify-center text-amber-700 dark:text-amber-400 shrink-0">
+            <Folder className="w-4 h-4 fill-amber-700/20" />
+          </div>
+        ) : (
+          <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 ${getDocumentBadgeStyle(docType)}`}>
+            <FileTypeIcon type={docType} className="h-4 w-4 shrink-0" palette="viewer" />
+          </div>
+        )}
+        <div className="truncate min-w-0 flex-1">
+          {isFolder ? (
+            <div className="flex items-baseline gap-2 truncate">
+              <span className="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate">
+                {item.name}
+              </span>
+              <span className="text-[11px] text-slate-400 dark:text-zinc-500 font-normal shrink-0 hidden md:inline">
+                {t('datarooms.cardPosition', { position: index + 1, defaultValue: `Card Position #${index + 1}` })}
+              </span>
+            </div>
+          ) : (
+            <>
+              <span className="text-sm font-medium text-slate-900 dark:text-zinc-100 truncate block">
+                {item.name}
+              </span>
+              {(typeof item.file_size === 'number' || item.updated_at) && (
+                <span className="text-[11px] text-slate-400 dark:text-zinc-500 font-normal flex items-center gap-1.5 mt-0.5">
+                  {typeof item.file_size === 'number' && <span>{formatBytes(item.file_size)}</span>}
+                  {typeof item.file_size === 'number' && item.updated_at && <span>•</span>}
+                  {item.updated_at && <span>{formatRelativeTime(item.updated_at)}</span>}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-zinc-700"
+          disabled={isFirst || isSaving}
+          onClick={onMoveUp}
+          aria-label={t('datarooms.moveItemUp', { name: item.name, defaultValue: `Move ${item.name} up` })}
+        >
+          <ArrowUp className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="h-7 w-7 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-zinc-700"
+          disabled={isLast || isSaving}
+          onClick={onMoveDown}
+          aria-label={t('datarooms.moveItemDown', { name: item.name, defaultValue: `Move ${item.name} down` })}
+        >
+          <ArrowDown className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </li>
+  );
 }
 
 export function DataroomReorderItemsDialog({
@@ -38,12 +147,21 @@ export function DataroomReorderItemsDialog({
   currentFolderName = null,
 }) {
   const { t } = useTranslation();
-  const [orderedItems, setOrderedItems] = useState(items);
-  const [dragIndex, setDragIndex] = useState(null);
+  const [orderedFolders, setOrderedFolders] = useState([]);
+  const [orderedDocs, setOrderedDocs] = useState([]);
+  const [dragFolderIndex, setDragFolderIndex] = useState(null);
+  const [dragDocIndex, setDragDocIndex] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const prevOpenRef = useRef(false);
 
   useEffect(() => {
-    if (isOpen) setOrderedItems(items);
+    if (isOpen && !prevOpenRef.current) {
+      setOrderedFolders(items.filter((item) => item.type === 'folder'));
+      setOrderedDocs(items.filter((item) => item.type !== 'folder'));
+      setDragFolderIndex(null);
+      setDragDocIndex(null);
+    }
+    prevOpenRef.current = isOpen;
   }, [isOpen, items]);
 
   const titleScope = useMemo(
@@ -51,24 +169,37 @@ export function DataroomReorderItemsDialog({
     [currentFolderName, t]
   );
 
-  const handleDrop = (targetIndex) => {
-    if (dragIndex === null || dragIndex === targetIndex) return;
-    setOrderedItems((prev) => moveItem(prev, dragIndex, targetIndex));
-    setDragIndex(null);
+  const handleFolderDrop = (targetIndex) => {
+    if (dragFolderIndex === null || dragFolderIndex === targetIndex) return;
+    setOrderedFolders((prev) => moveItem(prev, dragFolderIndex, targetIndex));
+    setDragFolderIndex(null);
+  };
+
+  const handleDocDrop = (targetIndex) => {
+    if (dragDocIndex === null || dragDocIndex === targetIndex) return;
+    setOrderedDocs((prev) => moveItem(prev, dragDocIndex, targetIndex));
+    setDragDocIndex(null);
   };
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await onConfirm(orderedItems);
+      await onConfirm([...orderedFolders, ...orderedDocs]);
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleResetOrder = () => {
-    setOrderedItems(resetToFoldersFirst(items));
+    const rawFolders = items.filter((item) => item.type === 'folder');
+    const rawDocs = items.filter((item) => item.type !== 'folder');
+    setOrderedFolders(sortAlphabeticalChronological(rawFolders));
+    setOrderedDocs(sortAlphabeticalChronological(rawDocs));
   };
+
+  const hasFolders = orderedFolders.length > 0;
+  const hasDocs = orderedDocs.length > 0;
+  const hasItems = hasFolders || hasDocs;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
@@ -76,102 +207,162 @@ export function DataroomReorderItemsDialog({
         onOpenChange(open);
       }
     }}>
-      <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>{t('datarooms.reorderItemsTitle')}</DialogTitle>
-          <DialogDescription>
-            {t('datarooms.reorderDescription', { scope: titleScope })}
-          </DialogDescription>
+      <DialogContent className="sm:max-w-2xl max-h-[88vh] flex flex-col p-6">
+        <DialogHeader className="pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300 flex items-center justify-center border border-slate-200/60 dark:border-zinc-700 shrink-0">
+              <ArrowUpDown className="w-4 h-4" />
+            </div>
+            <div className="space-y-0.5 min-w-0">
+              <DialogTitle>{t('datarooms.reorderItemsTitle')}</DialogTitle>
+              <DialogDescription>
+                {t('datarooms.reorderDescription', { scope: titleScope })}
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
 
-        <div className="overflow-y-auto rounded border border-gray-200 dark:border-gray-800">
-          {orderedItems.length === 0 ? (
-            <div className="p-4 text-sm text-gray-500">{t('datarooms.noItemsToReorder')}</div>
+        <div className="flex-1 overflow-y-auto max-h-[60vh] py-3 px-0.5 space-y-6">
+          {!hasItems ? (
+            <div className="p-8 text-center text-sm text-gray-500 dark:text-gray-400">
+              {t('datarooms.noItemsToReorder')}
+            </div>
           ) : (
-            <ul className="divide-y divide-gray-200 dark:divide-gray-800">
-              {orderedItems.map((item, index) => (
-                <li
-                  key={`${item.type}-${item.id}`}
-                  draggable={!isSaving}
-                  onDragStart={() => !isSaving && setDragIndex(index)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => !isSaving && handleDrop(index)}
-                  className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-900/40"
-                >
-                  <GripVertical className={`h-4 w-4 ${isSaving ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400'}`} />
-                  <span className="w-6 text-xs text-gray-500">{index + 1}</span>
-                  {item.type === 'folder' ? (
-                    <FolderIcon className="h-4 w-4 text-gray-500" />
-                  ) : (
-                    <FileIcon className="h-4 w-4 text-gray-500" />
-                  )}
-                  <span className="flex-1 truncate">{item.name}</span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      disabled={index === 0 || isSaving}
-                      onClick={() => setOrderedItems((prev) => moveItem(prev, index, index - 1))}
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      disabled={index === orderedItems.length - 1 || isSaving}
-                      onClick={() => setOrderedItems((prev) => moveItem(prev, index, index + 1))}
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </Button>
+            <>
+              {hasFolders && (
+                <section aria-labelledby="reorder-folders-heading">
+                  <div className="flex items-center justify-between mb-2.5 px-0.5">
+                    <div className="flex items-center gap-2">
+                      <h3
+                        id="reorder-folders-heading"
+                        className="text-xs font-bold tracking-wider uppercase text-slate-700 dark:text-zinc-300"
+                      >
+                        {t('datarooms.foldersOrder', { defaultValue: 'Folders Order' })}
+                      </h3>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">
+                        {t('datarooms.countFolders', { count: orderedFolders.length, defaultValue: `${orderedFolders.length} folders` })}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 dark:text-zinc-400 font-normal hidden sm:inline">
+                      {t('datarooms.foldersOrderHint', { defaultValue: 'Dictates Left-to-Right grid card order' })}
+                    </span>
                   </div>
-                </li>
-              ))}
-            </ul>
+
+                  <ul
+                    className="space-y-2"
+                    aria-label={t('datarooms.foldersListAria', { defaultValue: 'Folders list' })}
+                  >
+                    {orderedFolders.map((folder, index) => (
+                      <ReorderRow
+                        key={`folder-${folder.id}`}
+                        item={folder}
+                        index={index}
+                        total={orderedFolders.length}
+                        isSaving={isSaving}
+                        onDragStart={() => !isSaving && setDragFolderIndex(index)}
+                        onDrop={() => !isSaving && handleFolderDrop(index)}
+                        onMoveUp={() => setOrderedFolders((prev) => moveItem(prev, index, index - 1))}
+                        onMoveDown={() => setOrderedFolders((prev) => moveItem(prev, index, index + 1))}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {hasFolders && hasDocs && (
+                <div className="border-t border-slate-200/90 dark:border-zinc-800 my-4" />
+              )}
+
+              {hasDocs && (
+                <section aria-labelledby="reorder-documents-heading">
+                  <div className="flex items-center justify-between mb-2.5 px-0.5">
+                    <div className="flex items-center gap-2">
+                      <h3
+                        id="reorder-documents-heading"
+                        className="text-xs font-bold tracking-wider uppercase text-slate-700 dark:text-zinc-300"
+                      >
+                        {t('datarooms.documentsOrder', { defaultValue: 'Documents Order' })}
+                      </h3>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">
+                        {t('datarooms.countDocuments', { count: orderedDocs.length, defaultValue: `${orderedDocs.length} documents` })}
+                      </span>
+                    </div>
+                  </div>
+
+                  <ul
+                    className="space-y-2"
+                    aria-label={t('datarooms.documentsListAria', { defaultValue: 'Documents list' })}
+                  >
+                    {orderedDocs.map((doc, index) => (
+                      <ReorderRow
+                        key={`doc-${doc.id}`}
+                        item={doc}
+                        index={index}
+                        total={orderedDocs.length}
+                        isSaving={isSaving}
+                        onDragStart={() => !isSaving && setDragDocIndex(index)}
+                        onDrop={() => !isSaving && handleDocDrop(index)}
+                        onMoveUp={() => setOrderedDocs((prev) => moveItem(prev, index, index - 1))}
+                        onMoveDown={() => setOrderedDocs((prev) => moveItem(prev, index, index + 1))}
+                      />
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </>
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-800">
           <Button
             type="button"
             variant="ghost"
-            className="mr-auto"
+            className="mr-auto inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-zinc-100"
             onClick={() => {
               if (!isSaving) {
                 handleResetOrder();
               }
             }}
-            disabled={isSaving || items.length === 0}
+            disabled={isSaving || !hasItems}
           >
+            <RotateCcw className="h-3.5 w-3.5 text-slate-500 dark:text-zinc-400" />
             {t('datarooms.resetOrder')}
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              if (!isSaving) {
-                onOpenChange(false);
-              }
-            }}
-            disabled={isSaving}
-          >
-            {t('common.cancel')}
-          </Button>
-          <Button type="button" onClick={handleSave} disabled={isSaving || orderedItems.length === 0}>
-            {isSaving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t('common.saving')}
-              </>
-            ) : (
-              t('datarooms.saveOrder')
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (!isSaving) {
+                  onOpenChange(false);
+                }
+              }}
+              disabled={isSaving}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving || !hasItems}
+              className="inline-flex items-center gap-1.5"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  {t('common.saving')}
+                </>
+              ) : (
+                <>
+                  <Check className="mr-1.5 h-4 w-4" />
+                  {t('datarooms.saveOrder')}
+                </>
+              )}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
+
