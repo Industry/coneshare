@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { FileDown, MessageCircle, Info, X, AlertTriangle } from 'lucide-react';
+import { FileDown, MessageCircle, Info, X, AlertTriangle, AlertCircle } from 'lucide-react';
 import { PasswordForm } from '../components/viewer/PasswordForm';
 import { EmailForm } from '../components/viewer/EmailForm';
 import { NDAForm } from '../components/viewer/NDAForm';
+import { GateLayout } from '../components/viewer/GateLayout';
 import { ViewerToolbar } from '../components/viewer/ViewerToolbar';
 import { DocumentViewerHeader } from '../components/viewer/DocumentViewerHeader';
 import { QnAPanel } from '../components/viewer/QnAPanel';
@@ -35,6 +36,7 @@ import { formatBytes } from '../lib/formatters';
 import { useBranding } from '../contexts/BrandingProvider';
 import { LanguagePicker } from '../components/common/LanguagePicker';
 import { useTranslation } from 'react-i18next';
+import { getLocalizedErrorMessage } from '../utils/errorTranslator';
 
 const PREVIEW_POLL_INTERVAL_MS = 3000;
 
@@ -464,12 +466,19 @@ export function ShareLinkViewerPage() {
 
   if (error) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-gray-50">
-        <div className="rounded-lg bg-white p-8 text-center shadow-md">
-          <h1 className="mb-4 text-2xl font-bold text-red-600">Error</h1>
-          <p className="text-gray-700">{error.message}</p>
+      <GateLayout publicMeta={publicMeta} showAccessOwnerCard={false} maxWidth="max-w-md">
+        <div className="text-center py-6 space-y-3">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400">
+            <AlertCircle className="h-6 w-6" />
+          </div>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+            {t('viewer.linkErrorTitle', { defaultValue: 'Link Error' })}
+          </h1>
+          <p className="text-xs text-gray-500 dark:text-zinc-400 leading-relaxed max-w-xs mx-auto">
+            {getLocalizedErrorMessage(error)}
+          </p>
         </div>
-      </div>
+      </GateLayout>
     );
   }
 

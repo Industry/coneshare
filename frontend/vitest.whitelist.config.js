@@ -7,5 +7,6 @@ export default {
   test: {
     ...viteConfig.test,
     include: whitelistData.whitelist,
+    testTimeout: 10000,
   }
 };

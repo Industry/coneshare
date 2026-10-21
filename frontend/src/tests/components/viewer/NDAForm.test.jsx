@@ -149,4 +149,50 @@ describe('NDAForm', () => {
     expect(scrollBox.className).toContain('break-words');
     expect(scrollBox.className).toContain('overflow-x-hidden');
   });
+
+  it('renders agreement title with v-prefix for nda_version', () => {
+    const versionProps = {
+      ...defaultProps,
+      publicMeta: {
+        ...defaultProps.publicMeta,
+        nda_version: 3,
+      },
+    };
+
+    render(<NDAForm {...versionProps} />);
+    expect(screen.getByText('Confidentiality Agreement (v3)')).toBeInTheDocument();
+  });
+
+  it('handles empty or missing nda_text safely by disabling checkbox and submit CTA', () => {
+    const emptyNdaProps = {
+      ...defaultProps,
+      publicMeta: {
+        ...defaultProps.publicMeta,
+        nda_text: '',
+      },
+    };
+
+    render(<NDAForm {...emptyNdaProps} />);
+
+    // Should display notice that terms are unavailable
+    expect(screen.getByText('No Non-Disclosure Agreement terms are currently available.')).toBeInTheDocument();
+
+    const checkbox = screen.getByRole('checkbox');
+    expect(checkbox).toBeDisabled();
+
+    const submitButton = screen.getByRole('button', { name: /accept & view/i });
+    expect(submitButton).toBeDisabled();
+
+    // Clicking submit button does not call acceptShareLinkNda
+    fireEvent.click(submitButton);
+    expect(api.acceptShareLinkNda).not.toHaveBeenCalled();
+  });
+
+  it('renders decline link with text "Decline and leave" pointing to brandWebsiteUrl', () => {
+    render(<NDAForm {...defaultProps} />);
+
+    const declineLink = screen.getByRole('link', { name: /decline and leave/i });
+    expect(declineLink).toBeInTheDocument();
+    expect(declineLink).toHaveAttribute('href', 'https://www.coneshare.com');
+  });
 });

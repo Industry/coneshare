@@ -63,6 +63,7 @@
     "src/tests/components/viewer/DataroomFeaturedGrid.test.jsx",
     "src/tests/components/viewer/DataroomLoadingProgress.test.jsx",
     "src/tests/components/viewer/ViewerErrorBoundary.test.jsx",
-    "src/tests/utils/previewState.test.js"
+    "src/tests/utils/previewState.test.js",
+    "src/tests/components/viewer/GateLayout.test.jsx"
   ]
 }
