@@ -18,7 +18,7 @@ from django.utils import timezone
 from datetime import timedelta
 from rest_framework import mixins, permissions, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -73,8 +73,8 @@ class UserViewSet(mixins.RetrieveModelMixin,
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated, IsSelf]
-    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated, APIKeyTierPermission, IsSelf]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         """
@@ -425,6 +425,16 @@ class APIKeyViewSet(mixins.CreateModelMixin,
         name = serializer.validated_data['name']
         tier = serializer.validated_data['tier']
         expires_in_days = serializer.validated_data.get('expires_in_days')
+
+        if isinstance(request.auth, APIKey):
+            tier_levels = {'read_only': 1, 'read_write': 2, 'full_access': 3}
+            caller_level = tier_levels.get(request.auth.tier, 0)
+            requested_level = tier_levels.get(tier, 0)
+            if requested_level > caller_level:
+                return Response(
+                    {"detail": f"API key tier '{request.auth.tier}' cannot create a '{tier}' key."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
         expires_at = None
         if expires_in_days:

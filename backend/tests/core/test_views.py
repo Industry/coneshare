@@ -128,6 +128,45 @@ class TestUserViewSetPermissions:
         user.refresh_from_db()
         assert user.name == 'New Name'
 
+    def test_user_cannot_escalate_role_via_patch(self, api_client, user):
+        """A regular user cannot escalate their role to admin via self-update."""
+        assert user.role == 'member'
+        response = api_client.patch(f'/api/v1/users/{user.id}/', {'role': 'admin'})
+        assert response.status_code == status.HTTP_200_OK
+        user.refresh_from_db()
+        assert user.role == 'member'
+
+    def test_user_cannot_manipulate_custom_quota_via_patch(self, api_client, user):
+        """A regular user cannot alter their custom file size quota via self-update."""
+        assert user.custom_file_size_quota_mb is None
+        response = api_client.patch(f'/api/v1/users/{user.id}/', {'custom_file_size_quota_mb': 0})
+        assert response.status_code == status.HTTP_200_OK
+        user.refresh_from_db()
+        assert user.custom_file_size_quota_mb is None
+
+    def test_user_cannot_manipulate_is_active_via_patch(self, api_client, user):
+        """A regular user cannot change is_active status via self-update."""
+        assert user.is_active is True
+        response = api_client.patch(f'/api/v1/users/{user.id}/', {'is_active': False})
+        assert response.status_code == status.HTTP_200_OK
+        user.refresh_from_db()
+        assert user.is_active is True
+
+    def test_user_cannot_update_password_via_patch(self, api_client, user):
+        """A user cannot update password via self-service PATCH without old_password."""
+        response = api_client.patch(f'/api/v1/users/{user.id}/', {'password': 'NewPassword123!'})
+        assert response.status_code == status.HTTP_200_OK
+        user.refresh_from_db()
+        assert user.check_password('NewPassword123!') is False
+        assert user.check_password('password') is True
+
+    def test_user_can_update_profile_with_json(self, api_client, user):
+        """UserViewSet supports application/json payloads for profile updates."""
+        response = api_client.patch(f'/api/v1/users/{user.id}/', {'name': 'Updated Via JSON'}, format='json')
+        assert response.status_code == status.HTTP_200_OK
+        user.refresh_from_db()
+        assert user.name == 'Updated Via JSON'
+
     def test_user_cannot_update_other_user(self, api_client, user2):
         """A regular user cannot update another user's profile."""
         data = {'name': 'New Name'}
@@ -204,6 +243,24 @@ class TestUserViewSetPermissions:
         response = api_client.patch(f'/api/v1/admin/users/{user.id}/', data, format='json')
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert 'custom_file_size_quota_mb' in response.data
+
+    def test_admin_can_update_role(self, api_client, admin_user, user):
+        """An admin can update another user's role in the same org."""
+        api_client.force_authenticate(user=admin_user)
+        assert user.role == 'member'
+        response = api_client.patch(f'/api/v1/admin/users/{user.id}/', {'role': 'admin'}, format='json')
+        assert response.status_code == status.HTTP_200_OK
+        user.refresh_from_db()
+        assert user.role == 'admin'
+
+    def test_admin_can_update_is_active(self, api_client, admin_user, user):
+        """An admin can deactivate another user in the same org."""
+        api_client.force_authenticate(user=admin_user)
+        assert user.is_active is True
+        response = api_client.patch(f'/api/v1/admin/users/{user.id}/', {'is_active': False}, format='json')
+        assert response.status_code == status.HTTP_200_OK
+        user.refresh_from_db()
+        assert user.is_active is False
 
 
 @pytest.mark.django_db

@@ -129,3 +129,90 @@ def test_invalid_jwt_token_returns_401_unauthorized(public_client):
     response = public_client.get(url)
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert response.headers.get('WWW-Authenticate') == 'Bearer realm="api"'
+
+
+@pytest.mark.django_db
+def test_api_key_read_write_cannot_escalate_role(public_client, user):
+    raw_key, prefix, hashed_key = generate_raw_api_key()
+    APIKey.objects.create(
+        user=user,
+        name='RW Key',
+        prefix=prefix,
+        hashed_key=hashed_key,
+        tier='read_write',
+    )
+    public_client.credentials(HTTP_AUTHORIZATION=f'Bearer {raw_key}')
+    response = public_client.patch(f'/api/v1/users/{user.id}/', {'role': 'admin'})
+    assert response.status_code == status.HTTP_200_OK
+    user.refresh_from_db()
+    assert user.role == 'member'
+
+
+@pytest.mark.django_db
+def test_api_key_read_write_cannot_mutate_admin_endpoints(public_client, admin_user, user):
+    raw_key, prefix, hashed_key = generate_raw_api_key()
+    APIKey.objects.create(
+        user=admin_user,
+        name='Admin RW Key',
+        prefix=prefix,
+        hashed_key=hashed_key,
+        tier='read_write',
+    )
+    public_client.credentials(HTTP_AUTHORIZATION=f'Bearer {raw_key}')
+
+    # GET is allowed for read_write
+    response = public_client.get(f'/api/v1/admin/users/{user.id}/')
+    assert response.status_code == status.HTTP_200_OK
+
+    # PATCH /api/v1/admin/users/<id>/ is blocked (requires full_access)
+    response = public_client.patch(f'/api/v1/admin/users/{user.id}/', {'name': 'Hacked'}, format='json')
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "full_access" in response.data.get('detail', '')
+
+    # POST /api/v1/admin/users/<id>/reset-password/ is blocked
+    response = public_client.post(f'/api/v1/admin/users/{user.id}/reset-password/', {'password': 'newpass12345'}, format='json')
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "full_access" in response.data.get('detail', '')
+
+    # PATCH /api/v1/admin/settings/ is blocked
+    response = public_client.patch('/api/v1/admin/settings/', {'ENABLE_PUBLIC_SIGNUP': True}, format='json')
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_api_key_full_access_can_mutate_admin_endpoints(public_client, admin_user, user):
+    raw_key, prefix, hashed_key = generate_raw_api_key()
+    APIKey.objects.create(
+        user=admin_user,
+        name='Admin Full Key',
+        prefix=prefix,
+        hashed_key=hashed_key,
+        tier='full_access',
+    )
+    public_client.credentials(HTTP_AUTHORIZATION=f'Bearer {raw_key}')
+    response = public_client.patch(f'/api/v1/admin/users/{user.id}/', {'name': 'Updated by Full Key'}, format='json')
+    assert response.status_code == status.HTTP_200_OK
+    user.refresh_from_db()
+    assert user.name == 'Updated by Full Key'
+
+
+@pytest.mark.django_db
+def test_api_key_read_write_cannot_mint_full_access_key(public_client, user):
+    """An API key with read_write tier cannot create a full_access key."""
+    raw_key, prefix, hashed_key = generate_raw_api_key()
+    APIKey.objects.create(
+        user=user,
+        name='RW Key',
+        prefix=prefix,
+        hashed_key=hashed_key,
+        tier='read_write',
+    )
+    public_client.credentials(HTTP_AUTHORIZATION=f'Bearer {raw_key}')
+    url = reverse('api-key-list')
+    payload = {
+        'name': 'Escalated Full Access Key',
+        'tier': 'full_access',
+    }
+    response = public_client.post(url, payload, format='json')
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+

@@ -108,6 +108,33 @@ class TestAdminUserViewSetProtection:
 
 
 @pytest.mark.django_db
+class TestAdminUserCreation:
+    def test_admin_create_user_requires_password(self, admin_api_client):
+        """Admin creating a user must provide a password."""
+        payload = {
+            'email': 'nopassword@example.com',
+            'name': 'No Password User',
+            'role': 'member',
+        }
+        response = admin_api_client.post('/api/v1/admin/users/', payload, format='json')
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'password' in response.data
+
+    def test_admin_create_user_with_valid_password(self, admin_api_client):
+        """Admin creating a user with a valid password succeeds."""
+        payload = {
+            'email': 'validuser@example.com',
+            'name': 'Valid User',
+            'role': 'member',
+            'password': 'ValidPassword123!',
+        }
+        response = admin_api_client.post('/api/v1/admin/users/', payload, format='json')
+        assert response.status_code == status.HTTP_201_CREATED
+        created_user = User.objects.get(email='validuser@example.com')
+        assert created_user.check_password('ValidPassword123!') is True
+
+
+@pytest.mark.django_db
 class TestAdminSettingsTypedValues:
     def test_list_settings_includes_value_type(self, admin_api_client):
         response = admin_api_client.get('/api/v1/admin/settings/')

@@ -84,18 +84,17 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'name', 'role', 'organization', 'password',
+            'id', 'email', 'name', 'role', 'organization',
             'avatar', 'avatar_url', 'language', 'date_joined', 'updated_at',
             'total_document_size', 'file_size_quota_mb', 'custom_file_size_quota_mb', 'max_files_per_upload',
             'is_superuser', 'is_active'
         ]
         read_only_fields = [
-            'id', 'organization', 'date_joined', 'updated_at', 'avatar_url',
-            'total_document_size', 'file_size_quota_mb', 'max_files_per_upload',
-            'is_superuser'
+            'id', 'email', 'role', 'organization', 'date_joined', 'updated_at', 'avatar_url',
+            'total_document_size', 'file_size_quota_mb', 'custom_file_size_quota_mb', 'max_files_per_upload',
+            'is_superuser', 'is_active'
         ]
         extra_kwargs = {
-            'password': {'write_only': True, 'required': False},
             'avatar': {'write_only': True, 'required': False}
         }
 
@@ -120,6 +119,52 @@ class UserSerializer(serializers.ModelSerializer):
             self._max_files_per_upload = get_dynamic_setting('MAX_FILES_PER_UPLOAD')
         return self._max_files_per_upload
 
+    def create(self, validated_data):
+        """
+        Create and return a new user.
+        """
+        organization = validated_data.get('organization') or Organization.objects.first()
+        if not organization:
+            raise serializers.ValidationError("Server is not configured with a default organization.")
+        validated_data['organization'] = organization
+        if 'username' not in validated_data and 'email' in validated_data:
+            validated_data['username'] = validated_data['email']
+        return User.objects.create_user(**validated_data)
+
+    def update(self, instance, validated_data):
+        """
+        Update user profile.
+        Restricted administrative fields and passwords cannot be updated via self-service.
+        """
+        validated_data.pop('email', None)
+        validated_data.pop('password', None)
+        validated_data.pop('role', None)
+        validated_data.pop('is_active', None)
+        validated_data.pop('custom_file_size_quota_mb', None)
+        return super().update(instance, validated_data)
+
+
+class AdminUserSerializer(UserSerializer):
+    """Serializer for admin management of organization users."""
+    password = serializers.CharField(write_only=True, required=False)
+
+    class Meta(UserSerializer.Meta):
+        fields = [
+            'id', 'email', 'name', 'role', 'organization', 'password',
+            'avatar', 'avatar_url', 'language', 'date_joined', 'updated_at',
+            'total_document_size', 'file_size_quota_mb', 'custom_file_size_quota_mb', 'max_files_per_upload',
+            'is_superuser', 'is_active'
+        ]
+        read_only_fields = [
+            'id', 'organization', 'date_joined', 'updated_at', 'avatar_url',
+            'total_document_size', 'file_size_quota_mb', 'max_files_per_upload',
+            'is_superuser'
+        ]
+        extra_kwargs = {
+            'password': {'write_only': True, 'required': False},
+            'avatar': {'write_only': True, 'required': False}
+        }
+
     def to_internal_value(self, data):
         if hasattr(data, 'copy'):
             data = data.copy()
@@ -143,31 +188,20 @@ class UserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(list(e.messages))
         return value
 
-    def create(self, validated_data):
-        """
-        Create and return a new user with an encrypted password.
-        """
-        organization = Organization.objects.first()
-        if not organization:
-            raise serializers.ValidationError("Server is not configured with a default organization.")
-        validated_data['organization'] = organization
-        validated_data['username'] = validated_data.get('email')
-        return User.objects.create_user(**validated_data)
+    def validate(self, attrs):
+        if self.instance is None and not attrs.get('password'):
+            raise serializers.ValidationError({'password': ['This field is required.']})
+        return super().validate(attrs)
 
     def update(self, instance, validated_data):
         """
-        Update user, setting the password correctly if provided.
-        The user's email address cannot be changed.
+        Update user by admin. Password resets must use the dedicated reset-password action.
         """
-        validated_data.pop('email', None)  # Prevent email from being updated
-        password = validated_data.pop('password', None)
-        user = super().update(instance, validated_data)
+        validated_data.pop('email', None)
+        validated_data.pop('password', None)
+        return super(UserSerializer, self).update(instance, validated_data)
 
-        if password:
-            user.set_password(password)
-            user.save()
 
-        return user
 
 
 class ChangePasswordSerializer(serializers.Serializer):

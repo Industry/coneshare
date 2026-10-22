@@ -29,7 +29,7 @@ from sharelinks.serializers import ShareLinkSerializer
 from .models import AppConfiguration, LoginActivity, Organization
 from .settings_registry import (DEFAULT_SETTINGS, coerce_to_typed_value,
                                 deserialize_db_value, serialize_typed_to_db_value)
-from .serializers import (AdminResetPasswordSerializer, AppConfigurationSerializer, LoginActivitySerializer,
+from .serializers import (AdminResetPasswordSerializer, AdminUserSerializer, AppConfigurationSerializer, LoginActivitySerializer,
                           UserSerializer, OrganizationSerializer)
 
 User = get_user_model()
@@ -132,13 +132,13 @@ class AdminSettingsViewSet(viewsets.ModelViewSet):
         })
 
 
-class AdminUserDetailSerializer(UserSerializer):
+class AdminUserDetailSerializer(AdminUserSerializer):
     total_links = serializers.SerializerMethodField()
     total_datarooms = serializers.SerializerMethodField()
     total_views = serializers.SerializerMethodField()
 
-    class Meta(UserSerializer.Meta):
-        fields = UserSerializer.Meta.fields + ['total_links', 'total_datarooms', 'total_views']
+    class Meta(AdminUserSerializer.Meta):
+        fields = AdminUserSerializer.Meta.fields + ['total_links', 'total_datarooms', 'total_views']
 
     @extend_schema_field(serializers.IntegerField())
     def get_total_links(self, obj) -> int:
@@ -161,7 +161,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     API endpoint for admins to manage users in their organization.
     """
     queryset = User.objects.all()
-    serializer_class = UserSerializer
+    serializer_class = AdminUserSerializer
     permission_classes = [IsAuthenticated, IsAdmin, APIKeyTierPermission]
     pagination_class = AdminPagination
 
@@ -170,7 +170,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             return AdminUserDetailSerializer
         if self.action == 'reset_password':
             return AdminResetPasswordSerializer
-        return UserSerializer
+        return AdminUserSerializer
 
     def list(self, request, *args, **kwargs):
         page_param = request.query_params.get('page', '1')

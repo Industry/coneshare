@@ -75,7 +75,7 @@ API keys are assigned one of 3 scope tiers upon creation:
 | Tier | Allowed HTTP Methods | Blocked Operations |
 |---|---|---|
 | **`read_only`** | `GET`, `HEAD`, `OPTIONS` | `POST`, `PUT`, `PATCH`, `DELETE` (returns 403 Forbidden) |
-| **`read_write`** | `GET`, `HEAD`, `OPTIONS`, `POST`, `PUT`, `PATCH` | `DELETE` (returns 403 Forbidden) |
+| **`read_write`** | `GET`, `HEAD`, `OPTIONS`, `POST`, `PUT`, `PATCH` | `DELETE`, API key management, and administrative mutations (`/admin/*` write requests) (returns 403 Forbidden) |
 | **`full_access`** | All HTTP Methods (`GET`, `POST`, `PATCH`, `DELETE`) | None |
 
 ### Implementation (`core/permissions.py`):
@@ -92,9 +92,25 @@ class APIKeyTierPermission(permissions.BasePermission):
             self.message = f"API key tier 'read_only' does not permit {method} requests."
             return False
 
-        if tier == 'read_write' and method == 'DELETE':
-            self.message = "API key tier 'read_write' does not permit DELETE requests."
-            return False
+        if tier == 'read_write':
+            if method == 'DELETE':
+                self.message = "API key tier 'read_write' does not permit DELETE requests."
+                return False
+
+            # API key management requires 'full_access' tier
+            if getattr(view, 'basename', None) == 'api-key' and method not in ('GET', 'HEAD', 'OPTIONS'):
+                self.message = "API key tier 'read_write' does not permit managing API keys. 'full_access' tier is required."
+                return False
+
+            # Administrative mutations require 'full_access' tier
+            view_module = getattr(view, '__module__', '')
+            is_admin_view = 'admin_views' in view_module or any(
+                perm is IsAdmin or (isinstance(perm, type) and issubclass(perm, IsAdmin))
+                for perm in getattr(view, 'permission_classes', [])
+            )
+            if is_admin_view and method not in ('GET', 'HEAD', 'OPTIONS'):
+                self.message = "API key tier 'read_write' does not permit administrative modifications. 'full_access' tier is required."
+                return False
 
         return True
 ```
@@ -110,7 +126,7 @@ When an API key calls Admin endpoints (`/api/v1/admin/*`), authorization require
    * **Member / Viewer**: Blocked with **HTTP 403 Forbidden**.
 2. **Tier Guard (`APIKeyTierPermission`)**:
    * `list_admin_users`, `get_admin_user_details`, `list_login_activities` (`GET` requests): Allowed for `read_only`, `read_write`, and `full_access` keys owned by an Admin.
-   * `create_user` (`POST` request): Blocked for `read_only` keys (returns 403 Forbidden).
+   * Administrative mutations like `create_user` (`POST`), `update_user` (`PATCH`), `reset_password` (`POST`), or settings updates (`PATCH`): Blocked for `read_only` and `read_write` keys (returns 403 Forbidden; strictly requires `full_access` tier).
 
 ---
 
