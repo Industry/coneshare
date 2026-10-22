@@ -29,6 +29,7 @@
     "src/tests/components/dialogs/DataroomMoveItemsDialog.test.jsx",
     "src/tests/pages/AdminUserDetailPage.test.jsx",
     "src/tests/components/dialogs/AddFolderDialog.test.jsx",
+    "src/tests/components/dialogs/AddContentDialog.test.jsx",
     "src/tests/components/dialogs/ConfirmationDialog.test.jsx",
     "src/tests/components/dialogs/MoveItemsDialog.test.jsx",
     "src/tests/components/dialogs/RenameItemDialog.test.jsx",

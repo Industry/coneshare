@@ -577,6 +577,7 @@
     "addContentTitle": "Inhalt zum Datenraum hinzufügen",
     "addContentDescription": "Wählen Sie Dokumente und Ordner aus Ihrer Bibliothek aus, um sie diesem Datenraum hinzuzufügen.",
     "allFiles": "Alle Dateien",
+    "filterCurrentList": "Aktuelle Liste filtern...",
     "folderEmpty": "Dieser Ordner ist leer.",
     "addSelectedItems_one": "{{count}} Element hinzufügen",
     "addSelectedItems_other": "{{count}} Elemente hinzufügen",

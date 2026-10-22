@@ -591,6 +591,7 @@
     "addContentTitle": "Добавить содержимое в датарум",
     "addContentDescription": "Выберите документы и папки из вашей библиотеки для добавления в этот датарум.",
     "allFiles": "Все файлы",
+    "filterCurrentList": "Фильтровать текущий список...",
     "folderEmpty": "Эта папка пуста.",
     "addSelectedItems_one": "Добавить {{count}} элемент",
     "addSelectedItems_few": "Добавить {{count}} элемента",

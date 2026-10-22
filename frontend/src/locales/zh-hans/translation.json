@@ -535,6 +535,7 @@
     "addContentTitle": "将内容添加到资料室",
     "addContentDescription": "从您的文档库中选择要添加到此资料室的文档和文件夹。",
     "allFiles": "所有文件",
+    "filterCurrentList": "筛选当前列表...",
     "folderEmpty": "此文件夹为空。",
     "addSelectedItems_one": "添加 {{count}} 个项目",
     "addSelectedItems_other": "添加 {{count}} 个项目",
