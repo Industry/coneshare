@@ -564,7 +564,8 @@ class TestGeneratePdfPagesTask:
     @patch('documents.tasks.requests.get')
     @patch('documents.tasks.fileserver_client.generate_download_url')
     @patch('documents.tasks.convert_from_path')
-    def test_task_marks_version_failed_when_a_page_renders_empty(self, mock_convert, mock_fs_download_url, mock_requests_get, mock_fs_upload_url, mock_requests_put, mock_pdfinfo, user):
+    @patch('documents.tasks.fileserver_client.delete_file')
+    def test_task_marks_version_failed_when_a_page_renders_empty(self, mock_delete_file, mock_convert, mock_fs_download_url, mock_requests_get, mock_fs_upload_url, mock_requests_put, mock_pdfinfo, user):
         document = Document.objects.create(
             organization=user.organization,
             created_by=user,
@@ -595,6 +596,9 @@ class TestGeneratePdfPagesTask:
         assert version.render_status == DocumentVersion.RENDER_FAILED
         assert "page 2" in version.render_error
         assert not version.has_pages
+        # Pages from the failed attempt must not be left behind
+        assert not DocumentPage.objects.filter(document_version=version).exists()
+        mock_delete_file.assert_called_once_with("path/to/broken_page_1.png")
 
 
 @pytest.mark.django_db
