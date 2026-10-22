@@ -359,10 +359,15 @@ describe('DataroomPage', () => {
             const moveButton = await screen.findByRole('button', { name: /^move$/i });
             await user.click(moveButton);
             
-            expect(await screen.findByRole('heading', { name: /move items/i })).toBeInTheDocument();
+            const moveDialog = await screen.findByRole('dialog');
+            expect(within(moveDialog).getByRole('heading', { name: /move items/i })).toBeInTheDocument();
             
+            // Select "Sub Folder" as target destination (moving to current folder Root is disabled)
+            const subFolderBtn = await within(moveDialog).findByText('Sub Folder');
+            await user.click(subFolderBtn);
+
             // The dialog's confirm button is "Move"
-            const confirmMoveButton = await screen.findByRole('button', { name: 'Move Here' });
+            const confirmMoveButton = within(moveDialog).getByRole('button', { name: 'Move Here' });
             await user.click(confirmMoveButton);
 
             // Assert API call
@@ -370,7 +375,7 @@ describe('DataroomPage', () => {
                 expect(api.moveDataroomContent).toHaveBeenCalledWith('dr123', {
                     dataroom_document_ids: ['ddoc1'],
                     dataroom_folder_ids: [],
-                    destination_folder_id: null, // Moving to root
+                    destination_folder_id: 'folder1', // Moving to Sub Folder
                 });
             });
             

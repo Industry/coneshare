@@ -68,7 +68,7 @@ function ReorderRow({
         <button
           type="button"
           className="cursor-grab active:cursor-grabbing text-slate-400 group-hover:text-slate-600 dark:text-zinc-500 p-0.5"
-          title={t('datarooms.dragToReorder', { defaultValue: 'Drag to reorder' })}
+          title={t('datarooms.dragToReorder')}
           tabIndex={-1}
         >
           <GripVertical className="h-4 w-4" />
@@ -92,7 +92,7 @@ function ReorderRow({
                 {item.name}
               </span>
               <span className="text-[11px] text-slate-400 dark:text-zinc-500 font-normal shrink-0 hidden md:inline">
-                {t('datarooms.cardPosition', { position: index + 1, defaultValue: `Card Position #${index + 1}` })}
+                {t('datarooms.cardPosition', { position: index + 1 })}
               </span>
             </div>
           ) : (
@@ -119,7 +119,7 @@ function ReorderRow({
           className="h-7 w-7 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-zinc-700"
           disabled={isFirst || isSaving}
           onClick={onMoveUp}
-          aria-label={t('datarooms.moveItemUp', { name: item.name, defaultValue: `Move ${item.name} up` })}
+          aria-label={t('datarooms.moveItemUp', { name: item.name })}
         >
           <ArrowUp className="h-3.5 w-3.5" />
         </Button>
@@ -130,7 +130,7 @@ function ReorderRow({
           className="h-7 w-7 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-zinc-700"
           disabled={isLast || isSaving}
           onClick={onMoveDown}
-          aria-label={t('datarooms.moveItemDown', { name: item.name, defaultValue: `Move ${item.name} down` })}
+          aria-label={t('datarooms.moveItemDown', { name: item.name })}
         >
           <ArrowDown className="h-3.5 w-3.5" />
         </Button>
@@ -237,20 +237,20 @@ export function DataroomReorderItemsDialog({
                         id="reorder-folders-heading"
                         className="text-xs font-bold tracking-wider uppercase text-slate-700 dark:text-zinc-300"
                       >
-                        {t('datarooms.foldersOrder', { defaultValue: 'Folders Order' })}
+                        {t('datarooms.foldersOrder')}
                       </h3>
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">
-                        {t('datarooms.countFolders', { count: orderedFolders.length, defaultValue: `${orderedFolders.length} folders` })}
+                        {t('datarooms.countFolders', { count: orderedFolders.length })}
                       </span>
                     </div>
                     <span className="text-[11px] text-slate-500 dark:text-zinc-400 font-normal hidden sm:inline">
-                      {t('datarooms.foldersOrderHint', { defaultValue: 'Dictates Left-to-Right grid card order' })}
+                      {t('datarooms.foldersOrderHint')}
                     </span>
                   </div>
 
                   <ul
                     className="space-y-2"
-                    aria-label={t('datarooms.foldersListAria', { defaultValue: 'Folders list' })}
+                    aria-label={t('datarooms.foldersListAria')}
                   >
                     {orderedFolders.map((folder, index) => (
                       <ReorderRow
@@ -281,17 +281,17 @@ export function DataroomReorderItemsDialog({
                         id="reorder-documents-heading"
                         className="text-xs font-bold tracking-wider uppercase text-slate-700 dark:text-zinc-300"
                       >
-                        {t('datarooms.documentsOrder', { defaultValue: 'Documents Order' })}
+                        {t('datarooms.documentsOrder')}
                       </h3>
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">
-                        {t('datarooms.countDocuments', { count: orderedDocs.length, defaultValue: `${orderedDocs.length} documents` })}
+                        {t('datarooms.countDocuments', { count: orderedDocs.length })}
                       </span>
                     </div>
                   </div>
 
                   <ul
                     className="space-y-2"
-                    aria-label={t('datarooms.documentsListAria', { defaultValue: 'Documents list' })}
+                    aria-label={t('datarooms.documentsListAria')}
                   >
                     {orderedDocs.map((doc, index) => (
                       <ReorderRow

@@ -1917,7 +1917,9 @@ export function DataroomPage() {
         onOpenChange={setIsMoveItemsOpen}
         onConfirm={handleMoveItems}
         dataroomId={dataroomId}
+        sourceFolderId={currentDataroomFolder?.id || null}
         selectedFolderIds={selection.folders}
+        selectedCount={selection.documents.length + selection.folders.length}
       />
       <DataroomReorderItemsDialog
         isOpen={isReorderDialogOpen}

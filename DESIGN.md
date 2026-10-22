@@ -80,6 +80,19 @@ Coneshare is a self-hosted B2B Virtual Dataroom and secure document sharing plat
   - `body`: `0.875rem` (14px), `font-normal`, color `#4B5563`.
 - **Monospace Font (`JetBrains Mono` / `font-mono`):** Used for index numbers (`01`, `02`), file type tags (`PDF`, `MD`), and security badges (`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded`).
 
+## Iconography & FileTypeIcon Tokens
+All icons strictly use **`lucide-react` (`2px` rounded stroke, `fill="none"`)** rather than solid yellow Windows/Drive folders, preserving a modern SaaS portal aesthetic and adapting cleanly to custom Dataroom brand presets:
+- **Folder Icons (`Folder` / `FolderIcon`):**
+  - **In Folder Cards:** Placed inside a `32×32px` (`h-8 w-8 rounded-lg`) soft-tinted container (`bg-gray-100` or `color-mix(in srgb, var(--dataroom-primary) 10%, transparent)`) with a `16×16px` (`h-4 w-4`) stroke icon in `var(--dataroom-primary)` / `#111827` (avoid solid yellow folder icons).
+  - **In Trees & Compact Lists:** `20×20px` (`h-5 w-5`) stroke icon colored with `var(--dataroom-secondary)` (`#4B5563`) or `var(--viewer-accent)` (`#1F2937`).
+- **Document Type Icons & Badges (`FileTypeIcon.jsx`):**
+  - **PDF (`FileTextIcon`):** Icon `#B91C1C` (Red-700) • Badge `bg-rose-50 text-rose-700 border-rose-100`
+  - **Document / Word (`FileIcon`):** Icon `#1D4ED8` (Blue-700) • Badge `bg-blue-50 text-blue-700 border-blue-100`
+  - **Spreadsheet (`FileSpreadsheet`):** Icon `#15803D` (Green-700) • Badge `bg-emerald-50 text-emerald-700 border-emerald-100`
+  - **Video (`FileVideo`):** Icon `#8A2BE2` (Violet) • Badge `bg-violet-50 text-violet-700 border-violet-100`
+  - **Markdown (`FileCode`):** Icon `#0284C7` (Sky-600) • Badge `bg-sky-50 text-sky-700 border-sky-100`
+  - **Image (`FileImageIcon`):** Icon `#0F766E` (Teal-700) • Badge `bg-teal-50 text-teal-700 border-teal-100`
+
 ## Components
 
 ### Surface A: External Visitor Portal (`/view/{slug}` — Customer View)
@@ -88,7 +101,7 @@ Visitors arrive via a ShareLink after passing sequential security gates (`Passwo
 - **Portal Hero Header:** Top bar with Dataroom/Org Logo, Portal Title, Language Picker, and contextual Q&A trigger (only shown when `link_settings.enable_qna = true`). Below sits the rounded Banner Card (`rounded-xl border border-gray-200 overflow-hidden`).
 - **Curated Content Canvas (`max-w-6xl mx-auto`):**
   1. **Featured / Pinned Resources (`is_starred = true`):** 3-column highlight cards (`rounded-xl border border-gray-200 bg-white p-4 shadow-sm`) at the very top (above Folders) for starred files/folders that owners want customers to see first.
-  2. **Folders (Compact 6-Card Cap):** Compact horizontal folder cards (`h-14 rounded-xl border border-gray-200 bg-white px-4 shadow-sm hover:border-gray-300`) in a 3-column grid (capped at 6 visible cards / 2 rows by default, with a `"Show all X folders ▾"` toggle when more than 6 folders exist so documents stay above the fold). Each card displays a sequential monospace index badge (`01`, `02`), folder icon, folder title, a `Download ZIP` button (only if `allow_download = true`), and a `Q&A` button (if `enable_qna = true`). Clicking a card navigates into that folder (`?parent_id=<folder_id>`), hides the root Hero Banner, updates the breadcrumb (`⌂ All Files › Folder Name`), and displays its subfolders and documents.
+  2. **Folders (Compact 6-Card Cap):** Compact horizontal folder cards (`h-14 rounded-xl border border-gray-200 bg-white px-4 shadow-sm hover:border-gray-300`) in a 3-column grid (capped at 6 visible cards / 2 rows by default, with a `"Show all X folders ▾"` toggle when more than 6 folders exist so documents stay above the fold). Each card displays a sequential monospace index badge (`01`, `02`), a `32×32px` tinted rounded-lg icon container with a `lucide-react` stroke `Folder` icon, folder title, a `Download ZIP` button (only if `allow_download = true`), and a `Q&A` button (if `enable_qna = true`). Clicking a card navigates into that folder (`?parent_id=<folder_id>`), hides the root Hero Banner, updates the breadcrumb (`⌂ All Files › Folder Name`), and displays its subfolders and documents.
   3. **Documents List / Grid:** Clean resource cards or spacious rows (`px-4 py-3 border-b border-gray-100 hover:bg-gray-50`) with sequential monospace index badge (continuing cleanly after folders), FileTypeIcon (`pdf`, `video`, `spreadsheet`, `markdown`, `image`), document title, updated timestamp, file size, primary `View` action (opens inline SPA preview with collapsible `DataroomFileTree` sidebar), `Download` button (only if `allow_download = true`), and contextual `Q&A` slide-over drawer trigger.
 
 ### Surface B: Internal Dataroom Manager (`/datarooms/{id}` — Owner & Collaborator Builder)
