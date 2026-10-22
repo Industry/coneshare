@@ -447,7 +447,9 @@ function DocumentsPage() {
         isOpen={isMoveItemsOpen}
         onOpenChange={setIsMoveItemsOpen}
         onConfirm={handleMoveItems}
+        sourceFolderId={folderId || null}
         selectedFolderIds={selection.folders}
+        selectedCount={selection.documents.length + selection.folders.length}
       />
       <CloudImportDialog
         isOpen={isCloudImportOpen}
