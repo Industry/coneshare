@@ -577,6 +577,7 @@
     "addContentTitle": "Add Content to Dataroom",
     "addContentDescription": "Select documents and folders from your library to add to this dataroom.",
     "allFiles": "All Files",
+    "filterCurrentList": "Filter current list...",
     "folderEmpty": "This folder is empty.",
     "addSelectedItems_one": "Add {{count}} item",
     "addSelectedItems_other": "Add {{count}} items",

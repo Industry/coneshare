@@ -577,6 +577,7 @@
     "addContentTitle": "Content aan dataroom toevoegen",
     "addContentDescription": "Selecteer documenten en mappen uit uw bibliotheek om aan deze dataroom toe te voegen.",
     "allFiles": "Alle bestanden",
+    "filterCurrentList": "Huidige lijst filteren...",
     "folderEmpty": "Deze map is leeg.",
     "addSelectedItems_one": "{{count}} item toevoegen",
     "addSelectedItems_other": "{{count}} items toevoegen",

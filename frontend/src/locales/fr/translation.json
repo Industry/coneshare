@@ -615,6 +615,7 @@
     "addContentTitle": "Ajouter du contenu à la dataroom",
     "addContentDescription": "Sélectionnez des documents et des dossiers de votre bibliothèque à intégrer à cette dataroom.",
     "allFiles": "Tous les fichiers",
+    "filterCurrentList": "Filtrer la liste actuelle...",
     "folderEmpty": "Ce dossier est vide.",
     "addSelectedItems_one": "Ajouter {{count}} élément",
     "addSelectedItems_other": "Ajouter {{count}} éléments",
