@@ -435,25 +435,44 @@ class TestViewSessionViewSet:
         assert view_session.longitude == -122.084
 
     @patch('sharelinks.views.settings.GEOIP')
-    def test_create_view_records_ip_from_x_real_ip(self, mock_geoip, public_client, share_link):
-        """Test that X-Real-IP header is prioritized for IP address if present."""
+    def test_create_view_records_ip_from_trusted_proxy_x_real_ip(self, mock_geoip, public_client, share_link):
+        """Test that X-Real-IP header is respected when sent by a trusted proxy."""
         mock_geoip.city.return_value = {}  # Mock to avoid errors, not testing location here
 
         real_ip = "1.2.3.4"
-        proxy_ip = "98.137.11.155"
-        spoofed_xff = "5.6.7.8"
+        proxy_ip = "127.0.0.1"
 
         response = public_client.post(
             '/api/v1/view-sessions/',
             {'share_link': share_link.id},
             HTTP_X_REAL_IP=real_ip,
-            HTTP_X_FORWARDED_FOR=f'{spoofed_xff}, {proxy_ip}',
             REMOTE_ADDR=proxy_ip
         )
 
         assert response.status_code == status.HTTP_201_CREATED
         view_session = ViewSession.objects.first()
         assert view_session.ip_address == real_ip
+
+    @patch('sharelinks.views.settings.GEOIP')
+    def test_create_view_ignores_spoofed_x_real_ip_from_untrusted_remote(self, mock_geoip, public_client, share_link):
+        """Test that client-controlled X-Real-IP from untrusted client is ignored."""
+        mock_geoip.city.return_value = {}
+
+        spoofed_ip = "203.0.113.7"
+        untrusted_remote = "98.137.11.155"
+
+        response = public_client.post(
+            '/api/v1/view-sessions/',
+            {'share_link': share_link.id},
+            HTTP_X_REAL_IP=spoofed_ip,
+            HTTP_X_FORWARDED_FOR=f'{spoofed_ip}, {untrusted_remote}',
+            REMOTE_ADDR=untrusted_remote
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        view_session = ViewSession.objects.first()
+        assert view_session.ip_address == untrusted_remote
+
 
     @patch('sharelinks.views.settings.GEOIP')
     def test_create_view_handles_geoip_city_none(self, mock_geoip, public_client, share_link):
@@ -3122,13 +3141,13 @@ class TestWatermarkingViews:
 
         # --- Viewer 1 ---
         render_url = f'/api/v1/links/{watermarked_link.slug}/render-page/1/'
-        response1 = public_client.get(render_url, HTTP_X_REAL_IP='1.1.1.1', HTTP_X_FORWARDED_FOR='5.5.5.5', REMOTE_ADDR='192.168.1.1')
+        response1 = public_client.get(render_url, HTTP_X_REAL_IP='1.1.1.1', REMOTE_ADDR='127.0.0.1')
         assert response1.status_code == status.HTTP_200_OK
         etag1 = response1['ETag']
 
         # --- Viewer 2 ---
-        # Use the same client but a different X-Real-IP
-        response2 = public_client.get(render_url, HTTP_X_REAL_IP='2.2.2.2', HTTP_X_FORWARDED_FOR='5.5.5.5', REMOTE_ADDR='192.168.1.1')
+        # Use the same client but a different X-Real-IP from trusted proxy
+        response2 = public_client.get(render_url, HTTP_X_REAL_IP='2.2.2.2', REMOTE_ADDR='127.0.0.1')
         assert response2.status_code == status.HTTP_200_OK
         etag2 = response2['ETag']
 
