@@ -1,23 +1,133 @@
+import ipaddress
+import logging
 import os
 import re
+from functools import lru_cache
+
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=128)
+def _parse_proxy_network(entry: str):
+    """
+    Parses an IP address or CIDR string into an ipaddress network object.
+    Caches results for high performance across repeated requests.
+    """
+    if not entry or not isinstance(entry, str):
+        return None
+    try:
+        return ipaddress.ip_network(entry.strip(), strict=False)
+    except (ValueError, TypeError):
+        return None
+
+
+def _is_ip_in_trusted_proxies(ip_str: str, trusted_proxies) -> bool:
+    """
+    Checks if a given IP string is contained in the trusted proxies configuration.
+    Supports single IP strings and CIDR notations in trusted_proxies.
+    """
+    if not ip_str or not trusted_proxies:
+        return False
+
+    try:
+        ip = ipaddress.ip_address(ip_str.strip())
+    except ValueError:
+        return False
+
+    if isinstance(trusted_proxies, str):
+        trusted_proxies = [p.strip() for p in trusted_proxies.split(',') if p.strip()]
+
+    for entry in trusted_proxies:
+        if isinstance(entry, (ipaddress.IPv4Network, ipaddress.IPv6Network)):
+            net = entry
+        elif isinstance(entry, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
+            if ip == entry:
+                return True
+            continue
+        elif isinstance(entry, str):
+            net = _parse_proxy_network(entry)
+            if net is None:
+                continue
+        else:
+            continue
+
+        try:
+            if ip in net:
+                return True
+        except (ValueError, TypeError):
+            continue
+
+    return False
+
+
+def _is_valid_ip(ip_str: str) -> bool:
+    """Validates whether a string is a valid IPv4 or IPv6 address."""
+    if not ip_str or not isinstance(ip_str, str):
+        return False
+    try:
+        ipaddress.ip_address(ip_str.strip())
+        return True
+    except ValueError:
+        return False
 
 
 def get_client_ip(request):
     """
-    Gets the real client IP address from a request, prioritizing a trusted
-    X-Real-IP header set by a proxy. If not present, it falls back to
-    X-Forwarded-For and then REMOTE_ADDR.
-    """
-    real_ip = request.META.get('HTTP_X_REAL_IP')
-    if real_ip:
-        return real_ip
+    Gets the real client IP address from a request.
 
+    Forwarding headers (X-Forwarded-For, X-Real-IP) are ONLY honoured if the
+    immediate connecting peer (REMOTE_ADDR) is in TRUSTED_PROXIES. If REMOTE_ADDR
+    is untrusted, REMOTE_ADDR itself is returned to prevent header spoofing.
+
+    When REMOTE_ADDR is trusted and X-Forwarded-For is present, the header is
+    traversed from right to left, returning the right-most untrusted IP address.
+    If X-Forwarded-For is absent, X-Real-IP is used as a fallback.
+    """
+    if not request or not hasattr(request, 'META'):
+        return None
+
+    remote_addr = request.META.get('REMOTE_ADDR')
+    if remote_addr:
+        remote_addr = remote_addr.strip()
+
+    if not remote_addr:
+        return None
+
+    default_proxies = ['127.0.0.1', '::1', '172.16.0.0/12']
+    trusted_proxies = getattr(settings, 'TRUSTED_PROXIES', default_proxies)
+    if trusted_proxies is None:
+        trusted_proxies = default_proxies
+
+    # If the immediate peer is NOT a trusted proxy, never trust forwarding headers.
+    if not _is_ip_in_trusted_proxies(remote_addr, trusted_proxies):
+        return remote_addr
+
+    # If the peer IS a trusted proxy, inspect X-Forwarded-For first
     xff = request.META.get('HTTP_X_FORWARDED_FOR')
     if xff:
-        # The first IP in the list is the original client IP.
-        return xff.split(',')[0].strip()
-    # If X-Forwarded-For is not present, fall back to REMOTE_ADDR.
-    return request.META.get('REMOTE_ADDR')
+        raw_ips = [ip.strip() for ip in xff.split(',') if ip.strip()]
+        # Walk from right to left to find the right-most untrusted IP
+        for ip_str in reversed(raw_ips):
+            if not _is_valid_ip(ip_str):
+                continue
+            if not _is_ip_in_trusted_proxies(ip_str, trusted_proxies):
+                return ip_str
+
+        # If all valid IPs in XFF are trusted proxies, fall back to the first valid IP
+        for ip_str in raw_ips:
+            if _is_valid_ip(ip_str):
+                return ip_str
+
+    # Fall back to X-Real-IP if present from the trusted proxy
+    real_ip = request.META.get('HTTP_X_REAL_IP')
+    if real_ip:
+        real_ip = real_ip.strip()
+        if _is_valid_ip(real_ip):
+            return real_ip
+
+    return remote_addr
 
 
 def get_unique_name(model_class, original_name: str, filter_kwargs: dict, has_extension: bool, base_qs=None) -> str:

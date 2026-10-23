@@ -60,6 +60,21 @@ if SITE_HOSTNAME and SITE_HOSTNAME not in default_hosts:
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', ','.join(default_hosts)).split(',')
 CSRF_TRUSTED_ORIGINS = os.environ.get('CSRF_TRUSTED_ORIGINS', SITE_DOMAIN).split(',')
 
+# Trusted reverse proxies for client IP determination.
+# Forwarding headers (X-Forwarded-For, X-Real-IP) will only be honoured if the
+# immediate connecting peer (REMOTE_ADDR) is in this list.
+# Defaults to loopback and Docker bridge subnets ('127.0.0.1,::1,172.16.0.0/12') so Coneshare
+# works seamlessly out-of-the-box behind host reverse proxies (Host Nginx, Traefik, Caddy).
+# NOTE: 10.0.0.0/8 and 192.168.0.0/16 are intentionally omitted by default to prevent clients
+# on corporate intranets from being treated as trusted proxies in direct-access deployments.
+# If your reverse proxy or load balancer runs on a separate private subnet or CDN, explicitly
+# configure TRUSTED_PROXIES in app.env (e.g. TRUSTED_PROXIES=127.0.0.1,::1,172.16.0.0/12,10.0.1.5).
+DEFAULT_TRUSTED_PROXIES = '127.0.0.1,::1,172.16.0.0/12'
+TRUSTED_PROXIES = [
+    ip.strip() for ip in os.environ.get('TRUSTED_PROXIES', DEFAULT_TRUSTED_PROXIES).split(',') if ip.strip()
+]
+
+
 # File Server (Core Service) Configuration
 CORE_API_URL = os.environ.get('CORE_API_URL', 'http://core:8080')
 INTERNAL_API_TOKEN = os.environ.get('INTERNAL_API_TOKEN')
