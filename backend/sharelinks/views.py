@@ -2163,6 +2163,7 @@ class ShareLinkPageView(APIView):
             return auth_error
 
         document = None
+        watermark_enabled = False
         if link.dataroom:
             dataroom_document_id = request.query_params.get('dataroom_document_id')
             if not dataroom_document_id:
@@ -2170,14 +2171,25 @@ class ShareLinkPageView(APIView):
             try:
                 setting = _resolve_dataroom_document_setting(link, dataroom_document_id, visible_only=True)
                 document = setting.dataroom_document.document
+                watermark_enabled = setting.enable_watermark
             except serializers.ValidationError as e:
                 return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
             except ShareLinkDataroomSetting.DoesNotExist:
                 return Response({"message": "You do not have permission to view this document."}, status=status.HTTP_403_FORBIDDEN)
         elif link.document:
             document = link.document
+            watermark_enabled = link.enable_watermark
         else:
             return Response({"message": "Invalid link target."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if document.type == 'video':
+            watermark_enabled = False
+
+        if watermark_enabled and link.watermark_text:
+            return Response(
+                {"message": "Watermarking is enabled for this file. Unwatermarked pages cannot be served directly."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         primary_version = document.versions.filter(is_primary=True).first()
         if not primary_version:

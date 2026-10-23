@@ -2659,6 +2659,98 @@ class TestShareLinkPageView:
         response_after = public_client.post(accept_url, {})
         assert response_after.status_code == status.HTTP_200_OK
 
+    def test_get_page_when_watermark_enabled_on_document_link_returns_403(self, authorized_client, share_link_with_password, document_with_pages):
+        """
+        Test that accessing unwatermarked page image returns 403 Forbidden
+        when watermarking is enabled on a document share link.
+        """
+        share_link_with_password.document = document_with_pages
+        share_link_with_password.enable_watermark = True
+        share_link_with_password.watermark_text = "Confidential {{email}}"
+        share_link_with_password.save()
+
+        url = f'/api/v1/links/{share_link_with_password.slug}/page/1/'
+        response = authorized_client.get(url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.data.get('message') == "Watermarking is enabled for this file. Unwatermarked pages cannot be served directly."
+
+    def test_get_page_when_watermark_enabled_on_dataroom_setting_returns_403(self, dataroom, document_with_pages, user):
+        """
+        Test that accessing unwatermarked page image returns 403 Forbidden
+        when watermarking is enabled on a dataroom document setting.
+        """
+        client = APIClient()
+        ddoc = DataroomDocument.objects.create(dataroom=dataroom, document=document_with_pages)
+        link = ShareLink.objects.create(
+            dataroom=dataroom,
+            created_by=user,
+            password="password123",
+            watermark_text="Confidential {{email}}"
+        )
+        setting, _ = ShareLinkDataroomSetting.objects.get_or_create(share_link=link, dataroom_document=ddoc)
+        setting.enable_watermark = True
+        setting.is_visible = True
+        setting.save()
+
+        verify_url = f'/api/v1/links/{link.slug}/verify-password/'
+        response_verify = client.post(verify_url, {'password': 'password123'})
+        assert response_verify.status_code == status.HTTP_200_OK
+
+        url = f'/api/v1/links/{link.slug}/page/1/?dataroom_document_id={ddoc.id}'
+        response = client.get(url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.data.get('message') == "Watermarking is enabled for this file. Unwatermarked pages cannot be served directly."
+
+    @override_settings(SITE_DOMAIN="http://test.coneshare.com")
+    @patch('sharelinks.views.fileserver_client.generate_download_url')
+    def test_get_page_when_watermark_disabled_on_dataroom_setting_succeeds(self, mock_fs_download_url, dataroom, document_with_pages, user):
+        """
+        Test that accessing unwatermarked page image succeeds (302) when watermarking
+        is disabled on a dataroom document setting, even if the link has watermark_text.
+        """
+        client = APIClient()
+        ddoc = DataroomDocument.objects.create(dataroom=dataroom, document=document_with_pages)
+        link = ShareLink.objects.create(
+            dataroom=dataroom,
+            created_by=user,
+            password="password123",
+            watermark_text="Confidential {{email}}"
+        )
+        setting, _ = ShareLinkDataroomSetting.objects.get_or_create(share_link=link, dataroom_document=ddoc)
+        setting.enable_watermark = False
+        setting.is_visible = True
+        setting.save()
+
+        verify_url = f'/api/v1/links/{link.slug}/verify-password/'
+        response_verify = client.post(verify_url, {'password': 'password123'})
+        assert response_verify.status_code == status.HTTP_200_OK
+
+        mock_fs_download_url.return_value = "http://test.coneshare.com/files/download/some-token"
+        url = f'/api/v1/links/{link.slug}/page/1/?dataroom_document_id={ddoc.id}'
+        response = client.get(url)
+
+        assert response.status_code == status.HTTP_302_FOUND
+
+    @override_settings(SITE_DOMAIN="http://test.coneshare.com")
+    @patch('sharelinks.views.fileserver_client.generate_download_url')
+    def test_get_page_when_watermark_enabled_but_no_watermark_text_succeeds(self, mock_fs_download_url, authorized_client, share_link_with_password, document_with_pages):
+        """
+        Test that if enable_watermark is True but watermark_text is empty,
+        watermarking cannot be applied so unwatermarked page serving succeeds.
+        """
+        share_link_with_password.document = document_with_pages
+        share_link_with_password.enable_watermark = True
+        share_link_with_password.watermark_text = ""
+        share_link_with_password.save()
+
+        mock_fs_download_url.return_value = "http://test.coneshare.com/files/download/some-token"
+        url = f'/api/v1/links/{share_link_with_password.slug}/page/1/'
+        response = authorized_client.get(url)
+
+        assert response.status_code == status.HTTP_302_FOUND
+
 
 @pytest.mark.django_db
 class TestWatermarkingViews:
