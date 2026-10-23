@@ -296,8 +296,9 @@ class TestPublicFileRequestViews:
         """Test finalizing an upload creates a Document and an UploadedFile record."""
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
         data = {
-            'storage_key': 'some-key',
+            'storage_key': f"{file_request.created_by.organization.id}/some-key.pdf",
             'unique_name': 'final-doc.pdf',
+
             'file_size': 54321,
             'content_type': 'application/pdf',
             'uploader_name': 'John Doe',
@@ -338,11 +339,44 @@ class TestPublicFileRequestViews:
         assert payload['visitor_latitude'] is None
         assert payload['visitor_longitude'] is None
 
+    @patch('filerequests.views.scan_storage_key_or_raise')
+    def test_finalize_upload_rejects_invalid_or_unauthorized_storage_key(
+        self,
+        _mock_scan,
+        public_client,
+        file_request,
+    ):
+        """Finalizing a file request upload with an invalid, unauthorized, or traversing storage key returns HTTP 400."""
+        url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
+        org_id = file_request.created_by.organization.id
+
+        invalid_keys = [
+            '../run/secrets/app/secret_key',
+            f"{org_id}/../secret.txt",
+            f"{org_id}/%2e%2e/secret.txt",
+            f"{org_id}/%252e%252e/secret.txt",
+            'other_org/ab/malicious.pdf',
+            'no_prefix_key.pdf',
+        ]
+
+        for key in invalid_keys:
+            data = {
+                'storage_key': key,
+                'unique_name': 'test.pdf',
+                'file_size': 1234,
+                'content_type': 'application/pdf',
+                'uploader_name': 'Attacker',
+                'uploader_email': 'attacker@example.com',
+            }
+            response = public_client.post(url, data)
+            assert response.status_code == status.HTTP_400_BAD_REQUEST, f"Key {key} should have been rejected with 400, got {response.status_code}"
+
     @patch('documents.services.generate_pdf_pages_task.delay')
     @patch('filerequests.views.dispatch_automation_event_task.delay')
     @patch('filerequests.views.transaction.on_commit', side_effect=lambda fn: fn())
     @patch('filerequests.views.scan_storage_key_or_raise')
     def test_finalize_upload_persists_custom_field_values(
+
         self,
         _mock_scan,
         _mock_on_commit,
@@ -361,7 +395,7 @@ class TestPublicFileRequestViews:
 
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
         data = {
-            'storage_key': 'some-key',
+            'storage_key': f"{file_request.created_by.organization.id}/some-key.pdf",
             'unique_name': 'final-doc.pdf',
             'file_size': 54321,
             'content_type': 'application/pdf',
@@ -405,8 +439,9 @@ class TestPublicFileRequestViews:
 
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
         data = {
-            'storage_key': 'some-key',
+            'storage_key': f"{file_request.created_by.organization.id}/some-key.pdf",
             'unique_name': 'final-doc.pdf',
+
             'file_size': 54321,
             'content_type': 'application/pdf',
             'uploader_name': 'John Doe',
@@ -429,7 +464,7 @@ class TestPublicFileRequestViews:
 
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
         data = {
-            'storage_key': 'some-key',
+            'storage_key': f"{file_request.created_by.organization.id}/some-key.pdf",
             'unique_name': 'final-doc.pdf',
             'file_size': 54321,
             'content_type': 'application/pdf',
@@ -453,7 +488,7 @@ class TestPublicFileRequestViews:
 
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
         data = {
-            'storage_key': 'some-key',
+            'storage_key': f"{file_request.created_by.organization.id}/some-key.pdf",
             'unique_name': 'final-doc.pdf',
             'file_size': 54321,
             'content_type': 'application/pdf',
@@ -478,7 +513,7 @@ class TestPublicFileRequestViews:
 
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
         data = {
-            'storage_key': 'some-key',
+            'storage_key': f"{file_request.created_by.organization.id}/some-key.pdf",
             'unique_name': 'final-doc.pdf',
             'file_size': 54321,
             'content_type': 'application/pdf',
@@ -514,7 +549,7 @@ class TestPublicFileRequestViews:
 
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
         data = {
-            'storage_key': 'some-key',
+            'storage_key': f"{file_request.created_by.organization.id}/some-key.pdf",
             'unique_name': 'final-doc.pdf',
             'file_size': 54321,
             'content_type': 'application/pdf',
@@ -539,8 +574,9 @@ class TestPublicFileRequestViews:
         file_request.save(update_fields=['allowed_file_types'])
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
         data = {
-            'storage_key': 'some-key',
+            'storage_key': f"{file_request.created_by.organization.id}/some-key.exe",
             'unique_name': 'payload.exe',
+
             'file_size': 54321,
             'content_type': 'application/octet-stream',
             'uploader_name': 'John Doe',
@@ -571,7 +607,7 @@ class TestPublicFileRequestViews:
         file_request.save(update_fields=['allowed_file_types'])
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
         data = {
-            'storage_key': 'some-key',
+            'storage_key': f"{file_request.created_by.organization.id}/archive.tar.gz",
             'unique_name': 'archive.tar.gz',
             'file_size': 54321,
             'content_type': 'application/gzip',
@@ -606,8 +642,9 @@ class TestPublicFileRequestViews:
         )
 
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
+        storage_key = f"{file_request.created_by.organization.id}/malicious-key.pdf"
         data = {
-            'storage_key': 'malicious-key',
+            'storage_key': storage_key,
             'unique_name': 'final-doc.pdf',
             'file_size': 54321,
             'content_type': 'application/pdf',
@@ -627,7 +664,7 @@ class TestPublicFileRequestViews:
         assert threat.storage_cleanup_status == SecurityThreatEvent.StorageCleanupStatus.DELETED
         assert threat.storage_cleanup_at is not None
         assert threat.storage_cleanup_error == ''
-        mock_delete_file.assert_called_once_with('malicious-key')
+        mock_delete_file.assert_called_once_with(storage_key)
         mock_dispatch_automation.assert_called_once()
         event_type, payload = mock_dispatch_automation.call_args.args
         assert event_type == 'file_request_malware_detected'
@@ -655,8 +692,9 @@ class TestPublicFileRequestViews:
         mock_delete_file.side_effect = Exception('delete failed')
 
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
+        storage_key = f"{file_request.created_by.organization.id}/malicious-key-2.pdf"
         data = {
-            'storage_key': 'malicious-key-2',
+            'storage_key': storage_key,
             'unique_name': 'final-doc.pdf',
             'file_size': 54321,
             'content_type': 'application/pdf',
@@ -689,8 +727,9 @@ class TestPublicFileRequestViews:
         )
 
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
+        storage_key = f"{file_request.created_by.organization.id}/scanner-down-key.pdf"
         data = {
-            'storage_key': 'scanner-down-key',
+            'storage_key': storage_key,
             'unique_name': 'final-doc.pdf',
             'file_size': 54321,
             'content_type': 'application/pdf',
@@ -710,7 +749,7 @@ class TestPublicFileRequestViews:
         assert threat.storage_cleanup_status == SecurityThreatEvent.StorageCleanupStatus.DELETED
         assert threat.storage_cleanup_at is not None
         assert threat.storage_cleanup_error == ''
-        mock_delete_file.assert_called_once_with('scanner-down-key')
+        mock_delete_file.assert_called_once_with(storage_key)
         mock_dispatch_automation.assert_called_once()
         event_type, payload = mock_dispatch_automation.call_args.args
         assert event_type == 'file_request_scan_failed'
@@ -735,8 +774,9 @@ class TestPublicFileRequestViews:
         mock_delete_file.side_effect = Exception('delete failed')
 
         url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
+        storage_key = f"{file_request.created_by.organization.id}/scanner-down-key-2.pdf"
         data = {
-            'storage_key': 'scanner-down-key-2',
+            'storage_key': storage_key,
             'unique_name': 'final-doc.pdf',
             'file_size': 54321,
             'content_type': 'application/pdf',
@@ -751,3 +791,4 @@ class TestPublicFileRequestViews:
         assert threat.storage_cleanup_status == SecurityThreatEvent.StorageCleanupStatus.FAILED
         assert 'delete failed' in threat.storage_cleanup_error
         mock_dispatch_automation.assert_called_once()
+

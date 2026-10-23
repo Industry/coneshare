@@ -1,4 +1,7 @@
 import os
+import posixpath
+import re
+from urllib.parse import unquote
 import mimetypes
 import logging
 import requests
@@ -10,7 +13,9 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import F, Q, Sum
+from rest_framework import serializers
 from rest_framework.exceptions import APIException
+
 
 from backend.utils import get_unique_name
 from core.models import User
@@ -187,11 +192,42 @@ def generate_storage_key(organization_id, file_name: str) -> str:
     e.g., "org_.../a1/b2c3d4...xyz.pdf"
     """
     file_id = uuid.uuid4().hex
-    file_ext = os.path.splitext(file_name)[1]
+    raw_ext = os.path.splitext(file_name)[1]
+    file_ext = re.sub(r'[^a-zA-Z0-9._-]', '', raw_ext)
     return f"{organization_id}/{file_id[:2]}/{file_id[2:]}{file_ext}"
 
 
+def validate_storage_key(storage_key: str, organization_id) -> str:
+    """
+    Validates that a client-supplied storage key belongs strictly to the given organization
+    and contains no path traversal attempts or malformed path components.
+    """
+    if not storage_key or not isinstance(storage_key, str):
+        raise serializers.ValidationError({"detail": "Invalid or unauthorized storage key for organization."})
+
+    # Convert Windows-style backslashes to forward slashes for uniform cross-platform parsing
+    unquoted = unquote(storage_key).replace('\\', '/')
+
+    # Reject null bytes, multi-encoded sequences (residual '%'), or traversal characters
+    if '\x00' in unquoted or '%' in unquoted or '..' in unquoted.split('/'):
+        raise serializers.ValidationError({"detail": "Invalid or unauthorized storage key for organization."})
+
+    # Normalize redundant slashes and dot components
+    normalized_key = posixpath.normpath(unquoted)
+
+    # Reject absolute paths or remaining traversal components
+    if normalized_key.startswith('/') or '..' in normalized_key.split('/'):
+        raise serializers.ValidationError({"detail": "Invalid or unauthorized storage key for organization."})
+
+    expected_prefix = f"{organization_id}/"
+    if not normalized_key.startswith(expected_prefix):
+        raise serializers.ValidationError({"detail": "Invalid or unauthorized storage key for organization."})
+
+    return normalized_key
+
+
 def create_document_from_upload(
+
     requesting_user: User,
     folder: Folder,
     storage_key: str,

@@ -42,3 +42,16 @@
 #### Rule 7: Add i18n keys to all locale catalogs in the same change
 - **Issue:** New UI strings and error messages used only in-code `t()` defaults, so the French locale shows English. One key (`viewSessions.readingDepth`) was used with two different defaults.
 - **Prevention Rule:** When adding `t('key', default)` calls, add the key to every locale catalog in the same change and keep a single default per key.
+
+---
+
+### [2026-10-23] Review of `advisory-E2` — Storage Key Validation & Root Confinement
+
+#### Rule 8: Enforce strict organization-scoped storage key validation across all finalize endpoints
+- **Issue:** `FileRequestUploadFinalizeView`, `DocumentVersionUploadFinalizeView`, and dataroom `upload_finalize` accepted client-supplied `storage_key` values without validating organization prefix or checking for path traversal (`..`), allowing arbitrary file reads or cross-tenant document hijacking.
+- **Prevention Rule:** All file upload finalize endpoints must enforce strict organization-scoped storage key validation (rejecting '..' and verifying organization prefix) via a shared validator. Never trust client-supplied storage keys without prefix and traversal checks.
+
+#### Rule 9: File service handlers must always confine resolved paths to the storage root
+- **Issue:** In the Go file service (`core/main.go`), `handleDownload` checked confinement only against the token's parent directory (`authorizedDir`) and failed to check against `storageRoot`, allowing a `storage_key` with `..` to escape the root directory and read arbitrary container files.
+- **Prevention Rule:** Every file service handler that accesses disk (including `handleDownload` and subpath wildcard handlers) must strictly enforce safePrefix matching against `storageRoot`.
+

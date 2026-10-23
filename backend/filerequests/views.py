@@ -21,7 +21,9 @@ from documents.services import (
     create_document_from_upload,
     _get_unique_document_name,
     generate_storage_key,
+    validate_storage_key,
 )
+
 from documents.fileserver import fileserver_client
 from documents.malware_scan import (
     MalwareDetectedError,
@@ -312,7 +314,15 @@ class FileRequestUploadFinalizeView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         validated_data = serializer.validated_data
         try:
+            validated_data['storage_key'] = validate_storage_key(
+                validated_data['storage_key'], file_request.created_by.organization.id
+            )
+        except serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
             custom_field_values = validate_custom_field_values(
+
                 file_request.custom_fields,
                 validated_data.get('custom_field_values') or {},
             )

@@ -22,8 +22,10 @@ from documents.services import (
     check_user_quota_on_upload,
     QuotaExceededError,
     generate_storage_key,
-    create_document_from_upload
+    create_document_from_upload,
+    validate_storage_key,
 )
+
 from documents.fileserver import fileserver_client
 from sharelinks.models import DataroomVisit, ViewSession
 from sharelinks.serializers import ViewSessionSerializer
@@ -691,7 +693,15 @@ class DataroomViewSet(viewsets.ModelViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         validated_data = serializer.validated_data
+        try:
+            validated_data['storage_key'] = validate_storage_key(
+                validated_data['storage_key'], dataroom.organization.id
+            )
+        except serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+
         destination_folder = validated_data.get('destination_folder_id')
+
         relative_path = validated_data.get('path')
 
         if destination_folder and destination_folder.dataroom != dataroom:

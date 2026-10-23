@@ -192,7 +192,7 @@ class TestDataroomViewSet:
         file_size = 331697
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         data_finalize = {
-            'storage_key': 'org_1/uploads/test_file.pdf',
+            'storage_key': f"{dataroom.organization.id}/uploads/test_file.pdf",
             'unique_name': 'test_file.pdf',
             'file_size': file_size,
             'content_type': 'application/pdf',
@@ -244,11 +244,12 @@ class TestDataroomViewSet:
 
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         data_finalize = {
-            'storage_key': 'org_1/uploads/big_deal_deck.pdf',
+            'storage_key': f"{dataroom.organization.id}/uploads/big_deal_deck.pdf",
             'unique_name': res_req.data.get('unique_name', 'big_deal_deck.pdf'),
             'file_size': file_size,
             'content_type': 'application/pdf',
         }
+
         res_fin = api_client.post(url_finalize, data_finalize, format='json')
         assert res_fin.status_code == status.HTTP_202_ACCEPTED
 
@@ -305,7 +306,7 @@ class TestDataroomViewSet:
 
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         res_fin = api_client.post(url_finalize, {
-            'storage_key': 'org_1/uploads/doc.pdf',
+            'storage_key': f'{dataroom.organization.id}/uploads/doc.pdf',
             'unique_name': res_ok.data.get('unique_name', 'doc.pdf'),
             'file_size': file_size,
             'content_type': 'application/pdf',
@@ -319,7 +320,7 @@ class TestDataroomViewSet:
         assert res_sub_req.status_code == status.HTTP_200_OK
 
         res_sub_fin = api_client.post(url_finalize, {
-            'storage_key': 'org_1/uploads/sub_doc.pdf',
+            'storage_key': f'{dataroom.organization.id}/uploads/sub_doc.pdf',
             'unique_name': res_sub_req.data.get('unique_name', 'sub_doc.pdf'),
             'file_size': subfolder_file_size,
             'content_type': 'application/pdf',
@@ -358,11 +359,12 @@ class TestDataroomViewSet:
 
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         data_finalize = {
-            'storage_key': 'org_1/uploads/shared_file.pdf',
+            'storage_key': f'{dataroom.organization.id}/uploads/shared_file.pdf',
             'unique_name': 'shared_file.pdf',
             'file_size': 1024,
             'content_type': 'application/pdf',
         }
+
         res = api_client.post(url_finalize, data_finalize, format='json')
         assert res.status_code == status.HTTP_202_ACCEPTED
 
@@ -446,8 +448,9 @@ class TestDataroomViewSet:
         from datarooms.services import delete_dataroom
 
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
+        storage_key = f'{dataroom.organization.id}/uploads/orphan_file.pdf'
         data_finalize = {
-            'storage_key': 'org_1/uploads/orphan_file.pdf',
+            'storage_key': storage_key,
             'unique_name': 'orphan_file.pdf',
             'file_size': 2048,
             'content_type': 'application/pdf',
@@ -464,7 +467,7 @@ class TestDataroomViewSet:
 
         assert not Document.objects.filter(id=doc.id).exists()
         assert not Dataroom.objects.filter(id=dataroom.id).exists()
-        mock_fs_delete.assert_called_with('org_1/uploads/orphan_file.pdf')
+        mock_fs_delete.assert_called_with(storage_key)
 
     def test_add_content_to_dataroom(self, api_client, dataroom, document):
         """Test adding documents to a dataroom."""
@@ -513,11 +516,12 @@ class TestDataroomViewSet:
         # Try to finalize an upload of 5 MB (total 13 MB > 10 MB)
         url = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         data = {
-            'storage_key': 'org_1/uploads/overflow.pdf',
+            'storage_key': f'{dataroom.organization.id}/uploads/overflow.pdf',
             'unique_name': 'overflow.pdf',
             'file_size': 5 * 1024 * 1024,
             'content_type': 'application/pdf',
         }
+
         response = api_client.post(url, data, format='json')
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "storage limit" in response.json()['detail'].lower()
@@ -1218,7 +1222,7 @@ class TestDataroomViewSet:
         
         # 1. Finalize root upload (no path, no parent folder)
         data = {
-            'storage_key': 'org_1/uploads/test_file.pdf',
+            'storage_key': f'{dataroom.organization.id}/uploads/test_file.pdf',
             'unique_name': 'test_file.pdf',
             'file_size': 1024,
             'content_type': 'application/pdf',
@@ -1257,7 +1261,7 @@ class TestDataroomViewSet:
         folder_b = DataroomFolder.objects.get(dataroom=dataroom, name='Folder B', parent=folder_a)
 
         data_nested = {
-            'storage_key': 'org_1/uploads/test_nested.pdf',
+            'storage_key': f'{dataroom.organization.id}/uploads/test_nested.pdf',
             'unique_name': 'test_nested.pdf',
             'file_size': 2048,
             'content_type': 'application/pdf',
@@ -1291,7 +1295,7 @@ class TestDataroomViewSet:
 
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         data_finalize = {
-            'storage_key': 'org_1/uploads/temp.txt',
+            'storage_key': f'{dataroom.organization.id}/uploads/temp.txt',
             'unique_name': 'temp.txt',
             'file_size': 12,
             'content_type': 'text/plain',
@@ -1324,7 +1328,7 @@ class TestDataroomViewSet:
             # 1. Finalize an upload to create the library folder structure and document
             url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
             data_finalize = {
-                'storage_key': 'org_1/uploads/temp.txt',
+                'storage_key': f'{dataroom.organization.id}/uploads/temp.txt',
                 'unique_name': 'temp.txt',
                 'file_size': 12,
                 'content_type': 'text/plain',
@@ -1342,7 +1346,7 @@ class TestDataroomViewSet:
             assert response.status_code == status.HTTP_204_NO_CONTENT
 
             # 3. Assert mock_delete_file was called with the storage key
-            mock_delete_file.assert_called_with('org_1/uploads/temp.txt')
+            mock_delete_file.assert_called_with(f'{dataroom.organization.id}/uploads/temp.txt')
 
             # 4. Verify standard document and library folder are deleted
             assert not Document.objects.filter(name='temp.txt').exists()
@@ -1361,7 +1365,7 @@ class TestDataroomViewSet:
         # 1. Finalize an upload to create the library folder structure and document
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         data_finalize = {
-            'storage_key': 'org_1/uploads/test_file.pdf',
+            'storage_key': f'{dataroom.organization.id}/uploads/test_file.pdf',
             'unique_name': 'test_file.pdf',
             'file_size': 1024,
             'content_type': 'application/pdf',
@@ -1384,7 +1388,7 @@ class TestDataroomViewSet:
         assert response_remove.status_code == status.HTTP_204_NO_CONTENT
 
         # 3. Assert mock_delete_file was called with the storage key
-        mock_delete_file.assert_called_with('org_1/uploads/test_file.pdf')
+        mock_delete_file.assert_called_with(f'{dataroom.organization.id}/uploads/test_file.pdf')
 
         # 4. Verify standard document is deleted from library
         assert not Document.objects.filter(name='test_file.pdf').exists()
@@ -1402,7 +1406,7 @@ class TestDataroomViewSet:
         """
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         data_finalize = {
-            'storage_key': 'org_1/uploads/resilient_test.pdf',
+            'storage_key': f'{dataroom.organization.id}/uploads/resilient_test.pdf',
             'unique_name': 'resilient_test.pdf',
             'file_size': 1024,
             'content_type': 'application/pdf',
@@ -1455,7 +1459,7 @@ class TestDataroomViewSet:
         # 2. Finalize an upload for the dataroom (creates the first 'Dataroom Uploads' folder for dataroom.created_by)
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         data_finalize = {
-            'storage_key': 'org_1/uploads/test_file_multiple.pdf',
+            'storage_key': f'{dataroom.organization.id}/uploads/test_file_multiple.pdf',
             'unique_name': 'test_file_multiple.pdf',
             'file_size': 1024,
             'content_type': 'application/pdf',
@@ -1608,7 +1612,7 @@ class TestDataroomFolderViewSet:
         # Finalize a file inside subfolder to materialize the backing library folder
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         data_finalize = {
-            'storage_key': 'org_1/uploads/subfile.txt',
+            'storage_key': f'{dataroom.organization.id}/uploads/subfile.txt',
             'unique_name': 'subfile.txt',
             'file_size': 12,
             'content_type': 'text/plain',
@@ -1636,9 +1640,35 @@ class TestDataroomFolderViewSet:
         backing_folder.refresh_from_db()
         assert backing_folder.name == 'renamed_subfolder'
 
+    def test_dataroom_upload_finalize_rejects_invalid_or_unauthorized_storage_key(self, api_client, dataroom):
+        """Test finalizing a dataroom upload with an invalid, unauthorized, or traversing storage key returns HTTP 400."""
+        api_client.force_authenticate(user=dataroom.created_by)
+        url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
+        org_id = dataroom.created_by.organization.id
+
+        invalid_keys = [
+            '../run/secrets/app/secret_key',
+            f"{org_id}/../secret.txt",
+            f"{org_id}/%2e%2e/secret.txt",
+            f"{org_id}/%252e%252e/secret.txt",
+            'other_org/ab/malicious.pdf',
+            'no_prefix_key.pdf',
+        ]
+
+        for key in invalid_keys:
+            data = {
+                'storage_key': key,
+                'unique_name': 'test.pdf',
+                'file_size': 100,
+                'content_type': 'application/pdf',
+            }
+            response = api_client.post(url_finalize, data, format='json')
+            assert response.status_code == status.HTTP_400_BAD_REQUEST, f"Key {key} should have been rejected with 400, got {response.status_code}"
+
 
 
 class TestDataroomDocumentViewSet:
+
     def test_rename_document_success(self, api_client, dataroom, document):
         """Test successfully renaming a dataroom document."""
         ddoc = DataroomDocument.objects.create(dataroom=dataroom, document=document, name=document.name)
@@ -1720,7 +1750,7 @@ class TestDataroomDocumentViewSet:
         # 1. Finalize an upload to create backing Document
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         data_finalize = {
-            'storage_key': 'org_1/uploads/temp.txt',
+            'storage_key': f'{dataroom.organization.id}/uploads/temp.txt',
             'unique_name': 'temp.txt',
             'file_size': 12,
             'content_type': 'text/plain',
@@ -1766,7 +1796,7 @@ class TestDataroomDocumentViewSet:
         # 2. Finalize upload for first dataroom
         url_finalize_1 = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         res_1 = api_client.post(url_finalize_1, {
-            'storage_key': 'org_1/uploads/temp1.txt',
+            'storage_key': f'{dataroom.organization.id}/uploads/temp1.txt',
             'unique_name': 'temp1.txt',
             'file_size': 12,
             'content_type': 'text/plain',
@@ -1776,7 +1806,7 @@ class TestDataroomDocumentViewSet:
         # 3. Finalize upload for second dataroom
         url_finalize_2 = f'/api/v1/datarooms/{second_dataroom.id}/uploads/finalize/'
         res_2 = api_client.post(url_finalize_2, {
-            'storage_key': 'org_1/uploads/temp2.txt',
+            'storage_key': f'{second_dataroom.organization.id}/uploads/temp2.txt',
             'unique_name': 'temp2.txt',
             'file_size': 15,
             'content_type': 'text/plain',
@@ -1951,7 +1981,7 @@ class TestDataroomFolderMtimeUpdates:
 
         url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
         res = api_client.post(url_finalize, {
-            'storage_key': 'org_1/uploads/test_file.pdf',
+            'storage_key': f'{dataroom.organization.id}/uploads/test_file.pdf',
             'unique_name': 'test_file.pdf',
             'file_size': 100,
             'content_type': 'application/pdf',

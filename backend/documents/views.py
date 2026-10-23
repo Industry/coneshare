@@ -1,8 +1,7 @@
 import logging
 import os
-import posixpath
 from pathlib import Path
-from urllib.parse import unquote, urljoin
+from urllib.parse import urljoin
 
 from django.conf import settings
 from django.db import transaction
@@ -42,7 +41,9 @@ from .services import (
     preview_status_for_render_status,
     promote_document_version,
     touch_folder_ancestors,
+    validate_storage_key,
 )
+
 from .renderers import get_renderer
 
 
@@ -232,14 +233,13 @@ class DocumentUploadFinalizeView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         validated_data = serializer.validated_data
-        storage_key = validated_data['storage_key']
-        expected_prefix = f"{request.user.organization.id}/"
-        normalized_key = posixpath.normpath(unquote(storage_key))
-        if not normalized_key.startswith(expected_prefix) or ".." in normalized_key:
-            return Response(
-                {"detail": "Invalid or unauthorized storage key for organization."},
-                status=status.HTTP_400_BAD_REQUEST,
+        try:
+            validated_data['storage_key'] = validate_storage_key(
+                validated_data['storage_key'], request.user.organization.id
             )
+        except serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+
 
         parent_folder = None
         relative_path = validated_data.get('path')
@@ -505,7 +505,15 @@ class DocumentVersionUploadFinalizeView(APIView):
         validated_data = serializer.validated_data
 
         try:
+            validated_data['storage_key'] = validate_storage_key(
+                validated_data['storage_key'], document.organization.id
+            )
+        except serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
             create_new_document_version(
+
                 document=document,
                 requesting_user=request.user,
                 storage_key=validated_data['storage_key'],

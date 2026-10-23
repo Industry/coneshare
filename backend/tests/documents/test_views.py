@@ -1330,7 +1330,37 @@ class TestDocumentVersionUploadViews:
 
         mock_task_delay.assert_not_called()
 
+    def test_finalize_version_rejects_invalid_or_unauthorized_storage_key(self, api_client, user):
+        """Test finalizing a new version with an invalid, unauthorized, or traversing storage key returns HTTP 400."""
+        api_client.force_authenticate(user=user)
+        doc = Document.objects.create(
+            organization=user.organization, created_by=user, name="test_ver_doc.pdf", status='ready'
+        )
+        DocumentVersion.objects.create(document=doc, version_number=1, is_primary=True)
+
+        finalize_url = f'/api/v1/uploads/document/{doc.id}/versions/finalize/'
+        org_id = user.organization.id
+
+        invalid_keys = [
+            '../run/secrets/app/secret_key',
+            f"{org_id}/../secret.txt",
+            f"{org_id}/%2e%2e/secret.txt",
+            f"{org_id}/%252e%252e/secret.txt",
+            'other_org/ab/malicious.pdf',
+            'no_prefix_key.pdf',
+        ]
+
+        for key in invalid_keys:
+            finalize_data = {
+                'storage_key': key,
+                'file_size': 100,
+                'content_type': 'application/pdf',
+            }
+            response = api_client.post(finalize_url, finalize_data)
+            assert response.status_code == status.HTTP_400_BAD_REQUEST, f"Key {key} should have been rejected with 400, got {response.status_code}"
+
     def test_upload_version_for_other_user_doc_permission_denied(self, api_client, user2):
+
         """Test a user cannot upload a new version to another user's document."""
         doc_by_user2 = Document.objects.create(
             organization=user2.organization, created_by=user2, name="user2_doc.pdf", status='ready'
@@ -1708,10 +1738,11 @@ class TestQuotaAndSizeTracking:
         file_size_2 = 2 * 1024 * 1024
         finalize_version_url = f'/api/v1/uploads/document/{doc.id}/versions/finalize/'
         finalize_version_data = {
-            'storage_key': 'key2',
+            'storage_key': f"{user.organization.id}/key2",
             'file_size': file_size_2,
             'content_type': 'application/pdf'
         }
+
         api_client.post(finalize_version_url, finalize_version_data)
         user.refresh_from_db()
         # Size should now be 2MB, not 3MB (old was replaced)

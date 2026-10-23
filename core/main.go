@@ -111,6 +111,13 @@ func generateURLHandler(action string, expiryDuration time.Duration) http.Handle
 			return
 		}
 
+		cleanKey := filepath.Clean(reqBody.StorageKey)
+		if strings.HasPrefix(cleanKey, "..") || filepath.IsAbs(reqBody.StorageKey) {
+			http.Error(w, "Invalid storage_key", http.StatusBadRequest)
+			return
+		}
+
+
 		token := uuid.New().String()
 		expiry := time.Now().Add(expiryDuration)
 
@@ -330,6 +337,12 @@ func handleDownload(config Config, disposition string) http.HandlerFunc {
 			return
 		}
 
+		cleanKey := filepath.Clean(info.StorageKey)
+		if strings.HasPrefix(cleanKey, "..") || filepath.IsAbs(info.StorageKey) {
+			http.Error(w, "Forbidden: path traversal attempt", http.StatusForbidden)
+			return
+		}
+
 		subpath := chi.URLParam(r, "*")
 		var filePath string
 		if subpath != "" {
@@ -339,7 +352,26 @@ func handleDownload(config Config, disposition string) http.HandlerFunc {
 			filePath = filepath.Join(config.StoragePath, info.StorageKey)
 		}
 
-		// Security check to prevent path traversal outside of the authorized directory.
+		// Security check 1: prevent path traversal outside of the storage root.
+		storageRoot, err := filepath.Abs(config.StoragePath)
+		if err != nil {
+			log.Printf("Configuration error: invalid storage path: %v", err)
+			http.Error(w, "Internal server error due to server configuration", http.StatusInternalServerError)
+			return
+		}
+		safeRootPrefix := storageRoot + string(os.PathSeparator)
+
+		cleanPath, err := filepath.Abs(filePath)
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		if !strings.HasPrefix(cleanPath, safeRootPrefix) {
+			http.Error(w, "Forbidden: path traversal attempt", http.StatusForbidden)
+			return
+		}
+
+		// Security check 2: prevent path traversal outside of the authorized directory.
 		authorizedDir := filepath.Join(config.StoragePath, filepath.Dir(info.StorageKey))
 		authorizedDirAbs, err := filepath.Abs(authorizedDir)
 		if err != nil {
@@ -347,17 +379,12 @@ func handleDownload(config Config, disposition string) http.HandlerFunc {
 			http.Error(w, "Internal server error due to server configuration", http.StatusInternalServerError)
 			return
 		}
-		safePrefix := authorizedDirAbs + string(os.PathSeparator)
-
-		cleanPath, err := filepath.Abs(filePath)
-		if err != nil {
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		if !strings.HasPrefix(cleanPath, safePrefix) {
+		safeAuthorizedPrefix := authorizedDirAbs + string(os.PathSeparator)
+		if !strings.HasPrefix(cleanPath, safeAuthorizedPrefix) {
 			http.Error(w, "Forbidden: path traversal attempt", http.StatusForbidden)
 			return
 		}
+
 
 		var downloadName string
 		if info.Filename != "" {
