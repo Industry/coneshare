@@ -14,6 +14,7 @@ from documents.models import Document, DocumentVersion, DocumentPage
 from documents.pdf_utils import extract_text_layout_for_pdf
 from documents.renderers import normalize_content_type
 from documents.tasks import (
+    convert_office_to_pdf_task,
     generate_pdf_pages_task,
     generate_video_stream_task,
     _resolve_pdf_object,
@@ -1419,6 +1420,61 @@ def test_backfill_page_text_preserves_existing_text_without_force(user):
     assert page1.text_content == {"lines": existing_lines}
     # Page 2 was backfilled
     assert page2.text_content == {"lines": new_page2_lines}
+
+
+@pytest.mark.django_db
+class TestConvertOfficeToPdfTask:
+    @patch('documents.tasks.subprocess.run')
+    @patch('documents.tasks.requests.put')
+    @patch('documents.tasks.fileserver_client.generate_upload_url')
+    @patch('documents.tasks.requests.get')
+    @patch('documents.tasks.fileserver_client.generate_download_url')
+    def test_office_to_pdf_conversion_uses_isolated_user_profile(
+        self, mock_fs_download_url, mock_requests_get, mock_fs_upload_url, mock_requests_put, mock_subprocess, user
+    ):
+        """Validates that LibreOffice is called with an isolated UserInstallation profile directory."""
+        document = Document.objects.create(
+            organization=user.organization,
+            created_by=user,
+            name="presentation.pptx",
+            status='processing',
+        )
+        version = DocumentVersion.objects.create(
+            document=document,
+            version_number=1,
+            original_storage_key="org/presentation.pptx",
+            storage_key="org/presentation.pptx",
+            is_primary=True,
+            content_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
+
+        mock_fs_download_url.return_value = "/files/download/token"
+        mock_get_resp = MagicMock()
+        mock_get_resp.iter_content.return_value = [b"mock pptx content"]
+        mock_requests_get.return_value = mock_get_resp
+
+        mock_fs_upload_url.return_value = "/files/upload/token"
+        mock_put_resp = MagicMock()
+        mock_put_resp.raise_for_status.return_value = None
+        mock_requests_put.return_value = mock_put_resp
+
+        def fake_subprocess_run(cmd, **kwargs):
+            outdir = cmd[cmd.index("--outdir") + 1]
+            pdf_path = Path(outdir) / "presentation.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4 mock pdf content")
+            return MagicMock(returncode=0)
+
+        mock_subprocess.side_effect = fake_subprocess_run
+
+        convert_office_to_pdf_task(version.id)
+
+        mock_subprocess.assert_called_once()
+        cmd = mock_subprocess.call_args[0][0]
+        assert "libreoffice" in cmd
+        assert "--convert-to" in cmd
+        assert "pdf" in cmd
+        # Must isolate LibreOffice user profile per conversion call to prevent concurrency race conditions
+        assert any(str(arg).startswith("-env:UserInstallation=file://") for arg in cmd)
 
 
 

@@ -468,6 +468,7 @@ class TestXlsSpreadsheetSupport:
         assert "libreoffice" in cmd
         assert "--convert-to" in cmd
         assert "xlsx" in cmd
+        assert any(arg.startswith("-env:UserInstallation=file://") for arg in cmd)
 
         # Confirm JSON was uploaded to storage
         mock_requests.put.assert_called_once()
