@@ -45,7 +45,7 @@
 
 ---
 
-### [2026-10-23] Review of `advisory-E2` — Storage Key Validation & Root Confinement
+### [2026-10-23] Storage Key Validation & Root Confinement
 
 #### Rule 8: Enforce strict organization-scoped storage key validation across all finalize endpoints
 - **Issue:** `FileRequestUploadFinalizeView`, `DocumentVersionUploadFinalizeView`, and dataroom `upload_finalize` accepted client-supplied `storage_key` values without validating organization prefix or checking for path traversal (`..`), allowing arbitrary file reads or cross-tenant document hijacking.
@@ -54,4 +54,13 @@
 #### Rule 9: File service handlers must always confine resolved paths to the storage root
 - **Issue:** In the Go file service (`core/main.go`), `handleDownload` checked confinement only against the token's parent directory (`authorizedDir`) and failed to check against `storageRoot`, allowing a `storage_key` with `..` to escape the root directory and read arbitrary container files.
 - **Prevention Rule:** Every file service handler that accesses disk (including `handleDownload` and subpath wildcard handlers) must strictly enforce safePrefix matching against `storageRoot`.
+
+---
+
+### [2026-10-24] Frontend i18n Anti-Pattern Review
+
+#### Rule 10: Never use inline `defaultValue` in frontend `t('key')` calls
+- **Issue:** Developers and AI assistants repeatedly pass inline `defaultValue` or fallback string arguments inside React `t('key', { defaultValue: '...' })`. All 6 locale catalogs (`en`, `zh-hans`, `de`, `fr`, `ru`, `nl`) are statically bundled and configured with `fallbackLng: 'en'`. Inline defaults introduce string duplication, violate DRY, cause text drift between JSX and JSON files, and bloat component code.
+- **Prevention Rule:** All user-facing strings must be defined exclusively in the 6 locale catalogs (`frontend/src/locales/*/translation.json`). In React components and hooks, always call `t('key')` directly without `defaultValue` or inline fallback strings.
+
 

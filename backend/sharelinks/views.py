@@ -197,10 +197,16 @@ except ImportError:
     TTFont = None
 
 
+class LinkExpired(APIException):
+    status_code = status.HTTP_410_GONE
+    default_detail = "This link has expired."
+    default_code = "link_expired"
+
+
 def _get_active_share_link(slug: str) -> ShareLink:
     """
     Retrieves an active ShareLink by its slug, or raises an appropriate
-    DRF exception if it's not found or inactive.
+    DRF exception if it's not found, inactive, or expired.
     """
     try:
         # select_related is an optimization for views that access link targets
@@ -211,6 +217,9 @@ def _get_active_share_link(slug: str) -> ShareLink:
     if not link.is_active or (link.document and link.document.deleted_at is not None):
         # Treat inactive links or links targeting soft-deleted documents as "not found"
         raise NotFound(detail="This link is not available.")
+
+    if link.expires_at and link.expires_at < timezone.now():
+        raise LinkExpired()
 
     return link
 
@@ -816,6 +825,8 @@ class ShareLinkViewDataView(APIView):
             link = _get_active_share_link(slug)
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
 
         # If the user is the owner/creator or staff, automatically authorize the session
         # in the cookie context so that subsequent anonymous page/image requests pass.
@@ -1331,12 +1342,14 @@ class ShareLinkPublicMetaView(APIView):
     """Provides safe public metadata for password/email pre-access screens."""
     permission_classes = [permissions.AllowAny]
 
-    @extend_schema(responses={200: dict, 404: dict})
+    @extend_schema(responses={200: dict, 404: dict, 410: dict})
     def get(self, request, slug, *args, **kwargs):
         try:
             link = _get_active_share_link(slug)
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
 
         return Response(_build_share_link_public_meta(link, request=request), status=status.HTTP_200_OK)
 
@@ -1352,7 +1365,7 @@ class ShareLinkQnAThreadListCreateView(APIView):
             dataroom_folder_id=request.data.get('dataroom_folder_id') or request.query_params.get('dataroom_folder_id'),
         )
 
-    @extend_schema(responses={200: QnAThreadSerializer(many=True)})
+    @extend_schema(responses={200: QnAThreadSerializer(many=True), 404: dict, 410: dict})
     def get(self, request, slug, *args, **kwargs):
         # TODO: Normalize Q&A errors through DRF's exception handler so public
         # Q&A endpoints consistently return {"detail": ...} payloads.
@@ -1362,6 +1375,8 @@ class ShareLinkQnAThreadListCreateView(APIView):
             context = self._get_context_from_request(link, request)
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         except PermissionDenied as e:
@@ -1382,7 +1397,7 @@ class ShareLinkQnAThreadListCreateView(APIView):
 
     @extend_schema(
         request=QnAThreadCreateSerializer,
-        responses={201: QnAThreadSerializer}
+        responses={201: QnAThreadSerializer, 404: dict, 410: dict}
     )
     def post(self, request, slug, *args, **kwargs):
         serializer = QnAThreadCreateSerializer(data=request.data)
@@ -1405,6 +1420,8 @@ class ShareLinkQnAThreadListCreateView(APIView):
             )
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         except PermissionDenied as e:
@@ -1475,6 +1492,8 @@ class ShareLinkQnASummaryView(APIView):
             )
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         except PermissionDenied as e:
@@ -1517,7 +1536,7 @@ class ShareLinkQnAMessageListCreateView(APIView):
                 _resolve_qna_context_for_link(link, dataroom_folder_id=thread.dataroom_folder_id)
         return link, view_session, thread
 
-    @extend_schema(responses={200: QnAMessageSerializer(many=True)})
+    @extend_schema(responses={200: QnAMessageSerializer(many=True), 404: dict, 410: dict})
     def get(self, request, slug, thread_id, *args, **kwargs):
         # TODO: Normalize Q&A errors through DRF's exception handler so public
         # Q&A endpoints consistently return {"detail": ...} payloads.
@@ -1530,6 +1549,8 @@ class ShareLinkQnAMessageListCreateView(APIView):
             )
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         except PermissionDenied as e:
@@ -1541,7 +1562,7 @@ class ShareLinkQnAMessageListCreateView(APIView):
 
     @extend_schema(
         request=QnAMessageCreateSerializer,
-        responses={201: QnAMessageSerializer}
+        responses={201: QnAMessageSerializer, 404: dict, 410: dict}
     )
     def post(self, request, slug, thread_id, *args, **kwargs):
         serializer = QnAMessageCreateSerializer(data=request.data)
@@ -1559,6 +1580,8 @@ class ShareLinkQnAMessageListCreateView(APIView):
             )
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         except PermissionDenied as e:
@@ -1757,13 +1780,15 @@ class ShareLinkVerifyPasswordView(APIView):
 
     @extend_schema(
         request=ShareLinkPasswordSerializer,
-        responses={200: dict, 400: dict, 401: dict, 404: dict},
+        responses={200: dict, 400: dict, 401: dict, 404: dict, 410: dict},
     )
     def post(self, request, slug, *args, **kwargs):
         try:
             link = _get_active_share_link(slug)
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
 
         if not link.password:
             return Response(
@@ -1805,13 +1830,15 @@ class ShareLinkAcceptNDAView(APIView):
                 'view_session_id': serializers.CharField(required=False, allow_null=True, allow_blank=True),
             }
         ),
-        responses={200: dict, 400: dict, 404: dict},
+        responses={200: dict, 400: dict, 404: dict, 410: dict},
     )
     def post(self, request, slug, *args, **kwargs):
         try:
             link = _get_active_share_link(slug)
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
 
         if not link.require_nda:
             return Response(
@@ -1937,13 +1964,15 @@ class ShareLinkRequestAccessView(APIView):
 
     @extend_schema(
         request=ShareLinkEmailSerializer,
-        responses={200: dict, 400: dict, 404: dict, 500: dict},
+        responses={200: dict, 400: dict, 404: dict, 410: dict, 500: dict},
     )
     def post(self, request, slug, *args, **kwargs):
         try:
             link = _get_active_share_link(slug)
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
 
         if not link.requires_email:
             return Response(
@@ -2058,7 +2087,7 @@ class ShareLinkConfirmAccessView(APIView):
 
     @extend_schema(
         request=dict,
-        responses={200: dict, 400: dict, 404: dict},
+        responses={200: dict, 400: dict, 404: dict, 410: dict},
     )
     def post(self, request, slug, *args, **kwargs):
         token = request.data.get('token')
@@ -2069,6 +2098,8 @@ class ShareLinkConfirmAccessView(APIView):
             link = _get_active_share_link(slug)
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
 
         # Retrieve the pending verification details from session to bind it to the same browser context
         pending_verifications = request.session.get('pending_email_verifications', {})
@@ -2150,13 +2181,15 @@ class ShareLinkPageView(APIView):
     permission_classes = [permissions.AllowAny]
 
     @extend_schema(
-        responses={302: None, 400: dict, 401: dict, 403: dict, 404: dict, 503: dict},
+        responses={302: None, 400: dict, 401: dict, 403: dict, 404: dict, 410: dict, 503: dict},
     )
     def get(self, request, slug, page_number, *args, **kwargs):
         try:
             link = _get_active_share_link(slug)
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
 
         auth_error, _ = _verify_share_link_session_authorization(link, request, nda_status_code=status.HTTP_403_FORBIDDEN)
         if auth_error:
@@ -2234,6 +2267,8 @@ class WatermarkedPageRenderView(APIView):
             link = _get_active_share_link(slug)
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
 
         auth_error, auth_status = _verify_share_link_session_authorization(link, request, nda_status_code=status.HTTP_403_FORBIDDEN)
         if auth_error:
@@ -2566,11 +2601,6 @@ class ShareLinkFileDownloadView(APIView):
         responses={200: None, 302: None, 400: dict, 401: dict, 403: dict, 404: dict, 410: dict, 500: dict, 503: dict},
     )
     def get(self, request, slug, *args, **kwargs):
-        try:
-            link = _get_active_share_link(slug)
-        except NotFound as e:
-            return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
-
         is_preview = False
         preview_token = request.query_params.get('previewToken')
         if preview_token:
@@ -2584,6 +2614,13 @@ class ShareLinkFileDownloadView(APIView):
                             session.delete()
             except PreviewSession.DoesNotExist:
                 pass
+
+        try:
+            link = _get_active_share_link(slug)
+        except NotFound as e:
+            return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
 
         auth_error, _ = _verify_share_link_session_authorization(
             link, request, is_preview=is_preview, require_session=False, nda_status_code=status.HTTP_403_FORBIDDEN
@@ -2837,6 +2874,8 @@ class DataroomFolderDownloadView(APIView):
             link = _get_active_share_link(slug)
         except NotFound as e:
             return Response({"message": e.detail}, status=status.HTTP_404_NOT_FOUND)
+        except LinkExpired as e:
+            return Response({"message": e.detail}, status=status.HTTP_410_GONE)
 
         auth_error, _ = _verify_share_link_session_authorization(
             link, request, is_preview=is_preview, require_session=False, nda_status_code=status.HTTP_403_FORBIDDEN

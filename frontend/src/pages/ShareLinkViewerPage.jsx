@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { FileDown, MessageCircle, Info, X, AlertTriangle, AlertCircle } from 'lucide-react';
+import { FileDown, MessageCircle, Info, X, AlertTriangle, AlertCircle, Clock } from 'lucide-react';
 import { PasswordForm } from '../components/viewer/PasswordForm';
 import { EmailForm } from '../components/viewer/EmailForm';
 import { NDAForm } from '../components/viewer/NDAForm';
@@ -265,8 +265,20 @@ export function ShareLinkViewerPage() {
             return;
           }
 
+          const rawData = err.response?.data;
           const errorData =
-            err.response?.data || { message: 'Failed to load document. The link may be invalid or expired.' };
+            rawData && typeof rawData === 'object'
+              ? { ...rawData }
+              : {
+                  message:
+                    typeof rawData === 'string' && rawData.trim()
+                      ? rawData.trim()
+                      : 'Failed to load document. The link may be invalid or expired.',
+                };
+
+          if (err.response?.status) {
+            errorData.status = err.response.status;
+          }
           setError(errorData);
 
           if (err.response?.status === 401 && errorData?.protectionType) {
@@ -465,6 +477,29 @@ export function ShareLinkViewerPage() {
   }
 
   if (error) {
+    const isExpired = error?.status === 410;
+
+    if (isExpired) {
+      return (
+        <GateLayout publicMeta={publicMeta} showAccessOwnerCard={false} maxWidth="max-w-md">
+          <div className="text-center py-6 space-y-3">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">
+              <Clock className="h-6 w-6" />
+            </div>
+            <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+              {t('viewer.linkExpiredTitle')}
+            </h1>
+            <p className="text-xs text-gray-500 dark:text-zinc-400 leading-relaxed max-w-xs mx-auto">
+              {t('viewer.linkExpiredDescription')}
+            </p>
+            <p className="text-xs text-gray-400 dark:text-zinc-500">
+              {t('viewer.linkExpiredHint')}
+            </p>
+          </div>
+        </GateLayout>
+      );
+    }
+
     return (
       <GateLayout publicMeta={publicMeta} showAccessOwnerCard={false} maxWidth="max-w-md">
         <div className="text-center py-6 space-y-3">
@@ -472,7 +507,7 @@ export function ShareLinkViewerPage() {
             <AlertCircle className="h-6 w-6" />
           </div>
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">
-            {t('viewer.linkErrorTitle', { defaultValue: 'Link Error' })}
+            {t('viewer.linkErrorTitle')}
           </h1>
           <p className="text-xs text-gray-500 dark:text-zinc-400 leading-relaxed max-w-xs mx-auto">
             {getLocalizedErrorMessage(error)}
