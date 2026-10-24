@@ -249,7 +249,8 @@ def upload_local_version(user_context, document, filename):
          patch('documents.fileserver.fileserver_client.generate_download_url') as mock_download_url, \
          patch('documents.tasks.requests.get') as mock_task_get, \
          patch('documents.tasks.requests.put') as mock_task_put, \
-         patch('documents.tasks.convert_from_bytes') as mock_convert:
+         patch('documents.tasks.pdfinfo_from_bytes') as mock_pdfinfo, \
+         patch('documents.tasks.convert_from_path') as mock_convert:
 
         mock_download_url.return_value = "http://fileserver/files/download/token"
         mock_get_response = MagicMock()
@@ -257,6 +258,7 @@ def upload_local_version(user_context, document, filename):
         mock_get_response.content = file_content
         mock_task_get.return_value = mock_get_response
 
+        mock_pdfinfo.return_value = {'Pages': 1}
         mock_image = MagicMock()
         mock_image.save.side_effect = lambda buf, format: buf.write(b'fake-image-bytes')
         mock_convert.return_value = [mock_image]
