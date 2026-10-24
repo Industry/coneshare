@@ -30,8 +30,8 @@ export function ViewerToolbar({
   allowDownload,
   downloadUrl,
   downloadFileName,
-  downloadDocumentId = null,
-  viewId,
+  downloadDocumentId: _downloadDocumentId = null,
+  viewId: _viewId,
   onFullScreen,
   onPrint,
 

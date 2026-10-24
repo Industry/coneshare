@@ -28,6 +28,7 @@ paths:
           - de
           - en
           - fr
+          - nl
           - ru
           - zh-hans
       tags:
@@ -839,7 +840,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedUserList'
+                $ref: '#/components/schemas/PaginatedAdminUserList'
           description: ''
     post:
       operationId: v1_admin_users_create
@@ -850,13 +851,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/User'
+              $ref: '#/components/schemas/AdminUser'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/User'
+              $ref: '#/components/schemas/AdminUser'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/User'
+              $ref: '#/components/schemas/AdminUser'
         required: true
       security:
       - apiKeyAuth: []
@@ -866,7 +867,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/AdminUser'
           description: ''
   /api/v1/admin/users/{id}/:
     get:
@@ -907,13 +908,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/User'
+              $ref: '#/components/schemas/AdminUser'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/User'
+              $ref: '#/components/schemas/AdminUser'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/User'
+              $ref: '#/components/schemas/AdminUser'
         required: true
       security:
       - apiKeyAuth: []
@@ -923,7 +924,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/AdminUser'
           description: ''
     patch:
       operationId: v1_admin_users_partial_update
@@ -941,13 +942,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/PatchedUser'
+              $ref: '#/components/schemas/PatchedAdminUser'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/PatchedUser'
+              $ref: '#/components/schemas/PatchedAdminUser'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/PatchedUser'
+              $ref: '#/components/schemas/PatchedAdminUser'
       security:
       - apiKeyAuth: []
       - jwtAuth: []
@@ -956,7 +957,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/AdminUser'
           description: ''
     delete:
       operationId: v1_admin_users_destroy
@@ -997,7 +998,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/AdminUser'
           description: ''
   /api/v1/admin/users/{id}/recalculate-quota/:
     post:
@@ -1016,13 +1017,13 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/User'
+              $ref: '#/components/schemas/AdminUser'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/User'
+              $ref: '#/components/schemas/AdminUser'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/User'
+              $ref: '#/components/schemas/AdminUser'
         required: true
       security:
       - apiKeyAuth: []
@@ -1032,7 +1033,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/AdminUser'
           description: ''
   /api/v1/admin/users/{id}/reset-password/:
     post:
@@ -1091,7 +1092,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/User'
+                $ref: '#/components/schemas/AdminUser'
           description: ''
   /api/v1/admin/users/export/:
     get:
@@ -2461,6 +2462,157 @@ paths:
   /api/v1/datarooms/{id}/add-content/:
     post:
       operationId: v1_datarooms_add_content_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        description: A unique value identifying this dataroom.
+        required: true
+      tags:
+      - datarooms
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Dataroom'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Dataroom'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Dataroom'
+        required: true
+      security:
+      - apiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dataroom'
+          description: ''
+  /api/v1/datarooms/{id}/banner-images/:
+    get:
+      operationId: v1_datarooms_banner_images_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        description: A unique value identifying this dataroom.
+        required: true
+      tags:
+      - datarooms
+      security:
+      - apiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dataroom'
+          description: ''
+    post:
+      operationId: v1_datarooms_banner_images_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        description: A unique value identifying this dataroom.
+        required: true
+      tags:
+      - datarooms
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Dataroom'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/Dataroom'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/Dataroom'
+        required: true
+      security:
+      - apiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dataroom'
+          description: ''
+  /api/v1/datarooms/{id}/banner-images/{banner_id}/:
+    patch:
+      operationId: v1_datarooms_banner_images_partial_update
+      parameters:
+      - in: path
+        name: banner_id
+        schema:
+          type: string
+          pattern: ^(?!reorder/|reorder$)[^/.]+$
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: string
+        description: A unique value identifying this dataroom.
+        required: true
+      tags:
+      - datarooms
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDataroom'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedDataroom'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedDataroom'
+      security:
+      - apiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dataroom'
+          description: ''
+    delete:
+      operationId: v1_datarooms_banner_images_destroy
+      parameters:
+      - in: path
+        name: banner_id
+        schema:
+          type: string
+          pattern: ^(?!reorder/|reorder$)[^/.]+$
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: string
+        description: A unique value identifying this dataroom.
+        required: true
+      tags:
+      - datarooms
+      security:
+      - apiKeyAuth: []
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/datarooms/{id}/banner-images/reorder/:
+    post:
+      operationId: v1_datarooms_banner_images_reorder_create
       parameters:
       - in: path
         name: id
@@ -4116,6 +4268,13 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/v1/links/{slug}/download-file/:
     get:
       operationId: v1_links_download_file_retrieve
@@ -4303,6 +4462,13 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
         '503':
           content:
             application/json:
@@ -4335,6 +4501,13 @@ paths:
                 additionalProperties: {}
           description: ''
         '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '410':
           content:
             application/json:
               schema:
@@ -4387,6 +4560,20 @@ paths:
                 items:
                   $ref: '#/components/schemas/QnAThread'
           description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
     post:
       operationId: v1_links_qna_threads_create
       parameters:
@@ -4420,6 +4607,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/QnAThread'
           description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/v1/links/{slug}/qna-threads/{thread_id}/messages/:
     get:
       operationId: v1_links_qna_threads_messages_list
@@ -4448,6 +4649,20 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/QnAMessage'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
           description: ''
     post:
       operationId: v1_links_qna_threads_messages_create
@@ -4486,6 +4701,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/QnAMessage'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
           description: ''
   /api/v1/links/{slug}/render-page/{page_number}/:
     get:
@@ -4614,6 +4843,13 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
         '500':
           content:
             application/json:
@@ -4675,6 +4911,13 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+        '410':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/v1/links/{slug}/verify-password/:
     post:
       operationId: v1_links_verify_password_create
@@ -4726,6 +4969,13 @@ paths:
                 additionalProperties: {}
           description: ''
         '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '410':
           content:
             application/json:
               schema:
@@ -6056,7 +6306,9 @@ paths:
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/User'
-        required: true
+          application/json:
+            schema:
+              $ref: '#/components/schemas/User'
       security:
       - apiKeyAuth: []
       - jwtAuth: []
@@ -6085,6 +6337,9 @@ paths:
             schema:
               $ref: '#/components/schemas/PatchedUser'
           application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUser'
+          application/json:
             schema:
               $ref: '#/components/schemas/PatchedUser'
       security:
@@ -6568,6 +6823,33 @@ components:
           type: boolean
           writeOnly: true
           default: false
+        banner_mode:
+          allOf:
+          - $ref: '#/components/schemas/BannerModeEnum'
+          description: |-
+            Banner surface rendering mode
+
+            * `single` - Single banner image
+            * `gallery` - Banner gallery
+            * `none` - No banner
+        logo_mode:
+          allOf:
+          - $ref: '#/components/schemas/LogoModeEnum'
+          description: |-
+            Logo surface rendering mode
+
+            * `org` - Organization logo (default)
+            * `dataroom` - Dataroom logo
+        brand_logo_override:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional per-dataroom logo (supports PNG, JPG, WebP)
+          pattern: (?:png|jpg|jpeg|webp)$
+        remove_brand_logo_override:
+          type: boolean
+          writeOnly: true
+          default: false
         active_links_count:
           type: integer
           readOnly: true
@@ -6599,9 +6881,9 @@ components:
           writeOnly: true
       required:
       - password
-    AdminUserDetail:
+    AdminUser:
       type: object
-      description: Serializer for the User model.
+      description: Serializer for admin management of organization users.
       properties:
         id:
           type: string
@@ -6623,7 +6905,6 @@ components:
         password:
           type: string
           writeOnly: true
-          maxLength: 128
         avatar:
           type: string
           format: uri
@@ -6645,6 +6926,101 @@ components:
             * `ru` - Russian
             * `de` - German
             * `fr` - French
+            * `nl` - Dutch
+        date_joined:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        total_document_size:
+          type: integer
+          readOnly: true
+          description: Total size of all documents in bytes.
+        file_size_quota_mb:
+          type: integer
+          readOnly: true
+        custom_file_size_quota_mb:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+          description: Per-user custom file size quota in MB. If null, the global
+            config is used. 0 means unlimited.
+        max_files_per_upload:
+          type: integer
+          readOnly: true
+        is_superuser:
+          type: boolean
+          readOnly: true
+          title: Superuser status
+          description: Designates that this user has all permissions without explicitly
+            assigning them.
+        is_active:
+          type: boolean
+          title: Active
+          description: Designates whether this user should be treated as active. Unselect
+            this instead of deleting accounts.
+      required:
+      - avatar_url
+      - date_joined
+      - email
+      - file_size_quota_mb
+      - id
+      - is_superuser
+      - max_files_per_upload
+      - organization
+      - total_document_size
+      - updated_at
+    AdminUserDetail:
+      type: object
+      description: Serializer for admin management of organization users.
+      properties:
+        id:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        name:
+          type: string
+          maxLength: 255
+        role:
+          type: string
+          maxLength: 20
+        organization:
+          type: string
+          readOnly: true
+        password:
+          type: string
+          writeOnly: true
+        avatar:
+          type: string
+          format: uri
+          writeOnly: true
+          nullable: true
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+          readOnly: true
+        language:
+          allOf:
+          - $ref: '#/components/schemas/LanguageEnum'
+          description: |-
+            Preferred UI language
+
+            * `en` - English
+            * `zh-hans` - Simplified Chinese
+            * `ru` - Russian
+            * `de` - German
+            * `fr` - French
+            * `nl` - Dutch
         date_joined:
           type: string
           format: date-time
@@ -6949,6 +7325,16 @@ components:
       - name
       - organization
       - updated_at
+    BannerModeEnum:
+      enum:
+      - single
+      - gallery
+      - none
+      type: string
+      description: |-
+        * `single` - Single banner image
+        * `gallery` - Banner gallery
+        * `none` - No banner
     ChangePassword:
       type: object
       description: Serializer for password change endpoint.
@@ -7366,6 +7752,33 @@ components:
           type: boolean
           writeOnly: true
           default: false
+        banner_mode:
+          allOf:
+          - $ref: '#/components/schemas/BannerModeEnum'
+          description: |-
+            Banner surface rendering mode
+
+            * `single` - Single banner image
+            * `gallery` - Banner gallery
+            * `none` - No banner
+        logo_mode:
+          allOf:
+          - $ref: '#/components/schemas/LogoModeEnum'
+          description: |-
+            Logo surface rendering mode
+
+            * `org` - Organization logo (default)
+            * `dataroom` - Dataroom logo
+        brand_logo_override:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional per-dataroom logo (supports PNG, JPG, WebP)
+          pattern: (?:png|jpg|jpeg|webp)$
+        remove_brand_logo_override:
+          type: boolean
+          writeOnly: true
+          default: false
       required:
       - collaborator_count
       - created_at
@@ -7377,6 +7790,45 @@ components:
       - owner
       - storage_used_bytes
       - storage_version
+      - updated_at
+    DataroomBannerImage:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        dataroom:
+          type: string
+          readOnly: true
+        image:
+          type: string
+          format: uri
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+          readOnly: true
+        caption:
+          type: string
+          maxLength: 255
+        position:
+          type: integer
+          maximum: 1000
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - dataroom
+      - id
+      - image
+      - image_url
       - updated_at
     DataroomCollaboratorUser:
       type: object
@@ -7470,6 +7922,35 @@ components:
           format: uri
           nullable: true
           readOnly: true
+        banner_mode:
+          allOf:
+          - $ref: '#/components/schemas/BannerModeEnum'
+          readOnly: true
+          description: |-
+            Banner surface rendering mode
+
+            * `single` - Single banner image
+            * `gallery` - Banner gallery
+            * `none` - No banner
+        banner_images:
+          type: array
+          items:
+            $ref: '#/components/schemas/DataroomBannerImage'
+          readOnly: true
+        brand_logo_override:
+          type: string
+          format: uri
+          nullable: true
+          readOnly: true
+        logo_mode:
+          allOf:
+          - $ref: '#/components/schemas/LogoModeEnum'
+          readOnly: true
+          description: |-
+            Logo surface rendering mode
+
+            * `org` - Organization logo (default)
+            * `dataroom` - Dataroom logo
         brand_primary_color:
           type: string
           readOnly: true
@@ -7489,7 +7970,10 @@ components:
             additionalProperties: {}
           readOnly: true
       required:
+      - banner_images
+      - banner_mode
       - brand_accent_color
+      - brand_logo_override
       - brand_primary_color
       - brand_secondary_color
       - branding_banner
@@ -7501,6 +7985,7 @@ components:
       - enable_qna
       - id
       - items
+      - logo_mode
       - name
       - organization
       - owner
@@ -7874,12 +8359,16 @@ components:
         spreadsheet_preview_url:
           type: string
           nullable: true
+        markdown_preview_url:
+          type: string
+          nullable: true
         download_url:
           type: string
           nullable: true
       required:
       - download_url
       - id
+      - markdown_preview_url
       - name
       - num_pages
       - pages
@@ -8357,6 +8846,7 @@ components:
       - ru
       - de
       - fr
+      - nl
       type: string
       description: |-
         * `en` - English
@@ -8364,6 +8854,7 @@ components:
         * `ru` - Russian
         * `de` - German
         * `fr` - French
+        * `nl` - Dutch
     LinkClick:
       type: object
       properties:
@@ -8448,6 +8939,14 @@ components:
       - user_email
       - user_id
       - user_name
+    LogoModeEnum:
+      enum:
+      - org
+      - dataroom
+      type: string
+      description: |-
+        * `org` - Organization logo (default)
+        * `dataroom` - Dataroom logo
     LogoutRequest:
       type: object
       properties:
@@ -8598,6 +9097,12 @@ components:
           type: number
           format: double
           nullable: true
+        scroll_percentage:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+          nullable: true
       required:
       - created_at
       - duration_seconds
@@ -8647,6 +9152,11 @@ components:
           type: number
           format: double
           nullable: true
+        scroll_percentage:
+          type: integer
+          maximum: 100
+          minimum: 0
+          nullable: true
       required:
       - duration_seconds
       - page_number
@@ -8676,23 +9186,62 @@ components:
           nullable: true
           format: uri
           example: http://api.example.org/accounts/?page=2
-        metrics:
-          type: object
-          nullable: true
-          additionalProperties: true
         results:
           type: array
           items:
             $ref: '#/components/schemas/AdminDataroom'
-    PaginatedAutomationDeliveryList:
+        metrics:
+          type: object
+          nullable: true
+          additionalProperties: true
+    PaginatedAdminUserList:
       type: object
-      required:
-      - count
-      - results
       properties:
         count:
           type: integer
           example: 123
+        total_pages:
+          type: integer
+          example: 13
+        current_page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 10
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUser'
+        metrics:
+          type: object
+          nullable: true
+          additionalProperties: true
+    PaginatedAutomationDeliveryList:
+      type: object
+      properties:
+        count:
+          type: integer
+          example: 123
+        total_pages:
+          type: integer
+          example: 13
+        current_page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 10
         next:
           type: string
           nullable: true
@@ -8709,13 +9258,19 @@ components:
             $ref: '#/components/schemas/AutomationDelivery'
     PaginatedFileRequestList:
       type: object
-      required:
-      - count
-      - results
       properties:
         count:
           type: integer
           example: 123
+        total_pages:
+          type: integer
+          example: 13
+        current_page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 10
         next:
           type: string
           nullable: true
@@ -8755,14 +9310,14 @@ components:
           nullable: true
           format: uri
           example: http://api.example.org/accounts/?page=2
-        metrics:
-          type: object
-          nullable: true
-          additionalProperties: true
         results:
           type: array
           items:
             $ref: '#/components/schemas/LoginActivity'
+        metrics:
+          type: object
+          nullable: true
+          additionalProperties: true
     PaginatedSecurityThreatEventList:
       type: object
       properties:
@@ -8788,61 +9343,15 @@ components:
           nullable: true
           format: uri
           example: http://api.example.org/accounts/?page=2
-        metrics:
-          type: object
-          nullable: true
-          additionalProperties: true
         results:
           type: array
           items:
             $ref: '#/components/schemas/SecurityThreatEvent'
+        metrics:
+          type: object
+          nullable: true
+          additionalProperties: true
     PaginatedShareLinkList:
-      type: object
-      required:
-      - count
-      - results
-      properties:
-        count:
-          type: integer
-          example: 123
-        next:
-          type: string
-          nullable: true
-          format: uri
-          example: http://api.example.org/accounts/?page=4
-        previous:
-          type: string
-          nullable: true
-          format: uri
-          example: http://api.example.org/accounts/?page=2
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/ShareLink'
-    PaginatedUploadExportJobList:
-      type: object
-      required:
-      - count
-      - results
-      properties:
-        count:
-          type: integer
-          example: 123
-        next:
-          type: string
-          nullable: true
-          format: uri
-          example: http://api.example.org/accounts/?page=4
-        previous:
-          type: string
-          nullable: true
-          format: uri
-          example: http://api.example.org/accounts/?page=2
-        results:
-          type: array
-          items:
-            $ref: '#/components/schemas/UploadExportJob'
-    PaginatedUserList:
       type: object
       properties:
         count:
@@ -8867,23 +9376,54 @@ components:
           nullable: true
           format: uri
           example: http://api.example.org/accounts/?page=2
-        metrics:
-          type: object
-          nullable: true
-          additionalProperties: true
         results:
           type: array
           items:
-            $ref: '#/components/schemas/User'
-    PaginatedViewSessionList:
+            $ref: '#/components/schemas/ShareLink'
+    PaginatedUploadExportJobList:
       type: object
-      required:
-      - count
-      - results
       properties:
         count:
           type: integer
           example: 123
+        total_pages:
+          type: integer
+          example: 13
+        current_page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 10
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/UploadExportJob'
+    PaginatedViewSessionList:
+      type: object
+      properties:
+        count:
+          type: integer
+          example: 123
+        total_pages:
+          type: integer
+          example: 13
+        current_page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 10
         next:
           type: string
           nullable: true
@@ -8971,6 +9511,33 @@ components:
           type: boolean
           writeOnly: true
           default: false
+        banner_mode:
+          allOf:
+          - $ref: '#/components/schemas/BannerModeEnum'
+          description: |-
+            Banner surface rendering mode
+
+            * `single` - Single banner image
+            * `gallery` - Banner gallery
+            * `none` - No banner
+        logo_mode:
+          allOf:
+          - $ref: '#/components/schemas/LogoModeEnum'
+          description: |-
+            Logo surface rendering mode
+
+            * `org` - Organization logo (default)
+            * `dataroom` - Dataroom logo
+        brand_logo_override:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional per-dataroom logo (supports PNG, JPG, WebP)
+          pattern: (?:png|jpg|jpeg|webp)$
+        remove_brand_logo_override:
+          type: boolean
+          writeOnly: true
+          default: false
         active_links_count:
           type: integer
           readOnly: true
@@ -8979,6 +9546,89 @@ components:
           format: date-time
           nullable: true
           readOnly: true
+    PatchedAdminUser:
+      type: object
+      description: Serializer for admin management of organization users.
+      properties:
+        id:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          title: Email address
+          maxLength: 254
+        name:
+          type: string
+          maxLength: 255
+        role:
+          type: string
+          maxLength: 20
+        organization:
+          type: string
+          readOnly: true
+        password:
+          type: string
+          writeOnly: true
+        avatar:
+          type: string
+          format: uri
+          writeOnly: true
+          nullable: true
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+          readOnly: true
+        language:
+          allOf:
+          - $ref: '#/components/schemas/LanguageEnum'
+          description: |-
+            Preferred UI language
+
+            * `en` - English
+            * `zh-hans` - Simplified Chinese
+            * `ru` - Russian
+            * `de` - German
+            * `fr` - French
+            * `nl` - Dutch
+        date_joined:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        total_document_size:
+          type: integer
+          readOnly: true
+          description: Total size of all documents in bytes.
+        file_size_quota_mb:
+          type: integer
+          readOnly: true
+        custom_file_size_quota_mb:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          nullable: true
+          description: Per-user custom file size quota in MB. If null, the global
+            config is used. 0 means unlimited.
+        max_files_per_upload:
+          type: integer
+          readOnly: true
+        is_superuser:
+          type: boolean
+          readOnly: true
+          title: Superuser status
+          description: Designates that this user has all permissions without explicitly
+            assigning them.
+        is_active:
+          type: boolean
+          title: Active
+          description: Designates whether this user should be treated as active. Unselect
+            this instead of deleting accounts.
     PatchedAppConfiguration:
       type: object
       description: Serializer for the AppConfiguration model for admin use.
@@ -9141,6 +9791,33 @@ components:
           nullable: true
           maxLength: 9
         remove_branding_banner:
+          type: boolean
+          writeOnly: true
+          default: false
+        banner_mode:
+          allOf:
+          - $ref: '#/components/schemas/BannerModeEnum'
+          description: |-
+            Banner surface rendering mode
+
+            * `single` - Single banner image
+            * `gallery` - Banner gallery
+            * `none` - No banner
+        logo_mode:
+          allOf:
+          - $ref: '#/components/schemas/LogoModeEnum'
+          description: |-
+            Logo surface rendering mode
+
+            * `org` - Organization logo (default)
+            * `dataroom` - Dataroom logo
+        brand_logo_override:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional per-dataroom logo (supports PNG, JPG, WebP)
+          pattern: (?:png|jpg|jpeg|webp)$
+        remove_brand_logo_override:
           type: boolean
           writeOnly: true
           default: false
@@ -9646,21 +10323,17 @@ components:
         email:
           type: string
           format: email
+          readOnly: true
           title: Email address
-          maxLength: 254
         name:
           type: string
           maxLength: 255
         role:
           type: string
-          maxLength: 20
+          readOnly: true
         organization:
           type: string
           readOnly: true
-        password:
-          type: string
-          writeOnly: true
-          maxLength: 128
         avatar:
           type: string
           format: uri
@@ -9682,6 +10355,7 @@ components:
             * `ru` - Russian
             * `de` - German
             * `fr` - French
+            * `nl` - Dutch
         date_joined:
           type: string
           format: date-time
@@ -9699,9 +10373,7 @@ components:
           readOnly: true
         custom_file_size_quota_mb:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          readOnly: true
           nullable: true
           description: Per-user custom file size quota in MB. If null, the global
             config is used. 0 means unlimited.
@@ -9716,6 +10388,7 @@ components:
             assigning them.
         is_active:
           type: boolean
+          readOnly: true
           title: Active
           description: Designates whether this user should be treated as active. Unselect
             this instead of deleting accounts.
@@ -10716,21 +11389,17 @@ components:
         email:
           type: string
           format: email
+          readOnly: true
           title: Email address
-          maxLength: 254
         name:
           type: string
           maxLength: 255
         role:
           type: string
-          maxLength: 20
+          readOnly: true
         organization:
           type: string
           readOnly: true
-        password:
-          type: string
-          writeOnly: true
-          maxLength: 128
         avatar:
           type: string
           format: uri
@@ -10752,6 +11421,7 @@ components:
             * `ru` - Russian
             * `de` - German
             * `fr` - French
+            * `nl` - Dutch
         date_joined:
           type: string
           format: date-time
@@ -10769,9 +11439,7 @@ components:
           readOnly: true
         custom_file_size_quota_mb:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          readOnly: true
           nullable: true
           description: Per-user custom file size quota in MB. If null, the global
             config is used. 0 means unlimited.
@@ -10786,18 +11454,22 @@ components:
             assigning them.
         is_active:
           type: boolean
+          readOnly: true
           title: Active
           description: Designates whether this user should be treated as active. Unselect
             this instead of deleting accounts.
       required:
       - avatar_url
+      - custom_file_size_quota_mb
       - date_joined
       - email
       - file_size_quota_mb
       - id
+      - is_active
       - is_superuser
       - max_files_per_upload
       - organization
+      - role
       - total_document_size
       - updated_at
     UserGroup:

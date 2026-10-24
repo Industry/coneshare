@@ -137,6 +137,10 @@ jobs:
       working-directory: ./frontend
       run: npm ci
 
+    - name: Run frontend linter
+      working-directory: ./frontend
+      run: npm run lint
+
     - name: Run frontend tests
       working-directory: ./frontend
       run: npm run test:whitelist

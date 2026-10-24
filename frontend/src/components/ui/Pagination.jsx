@@ -12,7 +12,6 @@ export function Pagination({ currentPage, totalPages, onPageChange, className })
 
   const getPageNumbers = () => {
     const pages = [];
-    const pageLimit = 3;
     const leftSide = currentPage - 1 > 0 ? currentPage - 1 : 1;
     const rightSide = currentPage + 1 < totalPages ? currentPage + 1 : totalPages;
     let lastPage;

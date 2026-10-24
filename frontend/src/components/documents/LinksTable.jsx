@@ -110,6 +110,7 @@ export function LinksTable({
         onLinkUpdate(response.data);
       }
     } catch (error) {
+      // Error is handled by API interceptor
     }
   };  
 

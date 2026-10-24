@@ -13,7 +13,6 @@ export function AllLinksPage() {
   const [linksData, setLinksData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
 
   const fetchLinks = useCallback(async () => {
     try {
@@ -31,7 +30,7 @@ export function AllLinksPage() {
     fetchLinks();
   }, [fetchLinks]);
 
-  const totalPages = linksData ? Math.ceil(linksData.count / pageSize) : 0;
+  const totalPages = linksData?.total_pages ?? 1;
 
   return (
     <div className="container mx-auto p-4 sm:p-6">

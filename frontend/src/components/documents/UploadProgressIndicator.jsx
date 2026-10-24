@@ -13,7 +13,7 @@ export function UploadProgressIndicator() {
 
   const activeUploads = useMemo(() => Object.values(uploads), [uploads]);
 
-  const { totalProgress, completedCount, errorCount, inProgressCount } = useMemo(() => {
+  const { totalProgress, errorCount, inProgressCount } = useMemo(() => {
     let totalSize = 0;
     let totalUploaded = 0;
     let completedCount = 0;

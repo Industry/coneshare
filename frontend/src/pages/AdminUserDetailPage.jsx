@@ -123,7 +123,6 @@ export function AdminUserDetailPage() {
 
   if (!user) return null;
 
-  const totalViews = user.total_views || 0;
   const quotaMB = user.file_size_quota_mb || 0;
   const usageBytes = user.total_document_size || 0;
   const quotaBytes = quotaMB * 1024 * 1024;

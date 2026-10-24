@@ -347,4 +347,49 @@ describe('TrashPage Component', () => {
       expect(rowRestoreBtn).not.toBeDisabled();
     });
   });
+
+  it('correctly uses total_pages from API response for pagination navigation', async () => {
+    const mockItems = [
+      {
+        id: 'item-1',
+        name: 'DocA.pdf',
+        item_type: 'document',
+        file_type: 'pdf',
+        size: 1024,
+        deleted_at: new Date().toISOString(),
+        parent_name: '__root__',
+        parent_id: 'root',
+        view_count: 1,
+      },
+    ];
+    api.getTrashItems.mockResolvedValue({
+      data: {
+        results: mockItems,
+        count: 25,
+        total_pages: 3,
+        current_page: 1,
+        page_size: 10,
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <TrashPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('DocA.pdf')).toBeInTheDocument();
+    });
+
+    // Check that page indicator displays 1 / 3
+    expect(screen.getByText(/1 \/ 3/)).toBeInTheDocument();
+
+    const nextBtn = screen.getByRole('button', { name: /Next/i });
+    expect(nextBtn).toBeEnabled();
+
+    // Navigate to page 2
+    fireEvent.click(nextBtn);
+    expect(api.getTrashItems).toHaveBeenCalledWith(2);
+  });
 });

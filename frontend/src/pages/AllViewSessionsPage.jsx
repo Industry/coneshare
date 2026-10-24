@@ -5,7 +5,6 @@ import { ArrowLeft } from 'lucide-react';
 import { getAllViewSessions } from '../services/api';
 import { ViewSessionsTable } from '../components/documents/ViewSessionsTable';
 import { Skeleton } from '../components/ui/Skeleton';
-import { Pagination } from '../components/ui/Pagination';
 import { Button } from '../components/ui/Button';
 
 export function AllViewSessionsPage() {
@@ -13,7 +12,6 @@ export function AllViewSessionsPage() {
   const [viewsData, setViewsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
 
   const fetchViews = useCallback(async () => {
     try {
@@ -31,7 +29,7 @@ export function AllViewSessionsPage() {
     fetchViews();
   }, [fetchViews]);
 
-  const totalPages = viewsData ? Math.ceil(viewsData.count / pageSize) : 0;
+  const pageSize = viewsData?.page_size ?? 10;
 
   return (
     <div className="container mx-auto p-4 sm:p-6">

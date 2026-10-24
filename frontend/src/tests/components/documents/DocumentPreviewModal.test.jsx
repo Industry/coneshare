@@ -90,11 +90,11 @@ describe('DocumentPreviewModal', () => {
     };
 
     // 1. Mock API calls
-    const mockGetPreview = vi.spyOn(api, 'getDocumentPreviewData')
+    vi.spyOn(api, 'getDocumentPreviewData')
       .mockImplementation(() => {
         return Promise.resolve({ data: mockPendingData });
       });
-    const mockRebuildPreview = vi.spyOn(api, 'rebuildDocumentPreview')
+    vi.spyOn(api, 'rebuildDocumentPreview')
       .mockImplementation(() => {
         return Promise.resolve({ data: { preview_status: 'not_generated' } });
       });
