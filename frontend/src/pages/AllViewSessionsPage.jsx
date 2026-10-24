@@ -5,7 +5,6 @@ import { ArrowLeft } from 'lucide-react';
 import { getAllViewSessions } from '../services/api';
 import { ViewSessionsTable } from '../components/documents/ViewSessionsTable';
 import { Skeleton } from '../components/ui/Skeleton';
-import { Pagination } from '../components/ui/Pagination';
 import { Button } from '../components/ui/Button';
 
 export function AllViewSessionsPage() {
@@ -30,7 +29,7 @@ export function AllViewSessionsPage() {
     fetchViews();
   }, [fetchViews]);
 
-  const totalPages = viewsData?.total_pages ?? 1;
+  const pageSize = viewsData?.page_size ?? 10;
 
   return (
     <div className="container mx-auto p-4 sm:p-6">

@@ -62,6 +62,7 @@ export function parseUserAgent(uaString) {
 export function isSafeUrl(url) {
   if (!url) return false;
   // Trim leading/trailing whitespace and remove ASCII control characters (0-31, 127-159)
+  // eslint-disable-next-line no-control-regex
   const sanitized = url.trim().replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
   try {
     const parsed = new URL(sanitized);

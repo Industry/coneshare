@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Clock, Lock, ShieldCheck } from 'lucide-react';
 import { formatRelativeTime } from '../../utils/formatters';
 
-function BannerMetadataOverlay({ dataroomName, updatedAt, isNdaProtected }) {
+function BannerMetadataOverlay({ dataroomName, updatedAt: _updatedAt, isNdaProtected }) {
   const { t } = useTranslation();
   if (!dataroomName && !isNdaProtected) return null;
 

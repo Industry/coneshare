@@ -28,7 +28,6 @@ export function FileRequestsPage() {
   const [fileRequests, setFileRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
@@ -45,7 +44,6 @@ export function FileRequestsPage() {
     try {
       const response = await getFileRequests(currentPage);
       setFileRequests(response.data.results);
-      setTotalCount(response.data.count);
       setTotalPages(response.data.total_pages ?? 1);
     } catch (error) {
       console.error('Failed to fetch file requests:', error);

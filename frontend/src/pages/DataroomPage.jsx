@@ -119,7 +119,7 @@ export function DataroomPage() {
   const [bannerMode, setBannerMode] = useState('single');
   const [galleryImages, setGalleryImages] = useState([]);
   const [hasFetchedGallery, setHasFetchedGallery] = useState(false);
-  const [isGalleryImagesLoading, setIsGalleryImagesLoading] = useState(false);
+  const [, setIsGalleryImagesLoading] = useState(false);
   const [isSavingGeneral, setIsSavingGeneral] = useState(false);
   const [isSavingBanner, setIsSavingBanner] = useState(false);
   const [isSavingColors, setIsSavingColors] = useState(false);
@@ -278,7 +278,7 @@ export function DataroomPage() {
     }
   }, [dataroomId, currentFolderId]);
     
-  const fetchLinks = useCallback(async (options = {}) => {
+  const fetchLinks = useCallback(async (_options = {}) => {
     try {
       const response = await getShareLinksForDataroom(dataroomId);
       setLinks(response.data);

@@ -361,19 +361,14 @@ export function AdminUsersPage() {
   };
 
   const handleUpdateUser = async (userId, data) => {
-    try {
-      const response = await api.updateAdminUser(userId, data);
-      setUsers((prevUsers) =>
-        prevUsers.map((user) =>
-          user.id === userId ? { ...user, ...response.data } : user
-        )
-      );
-      toast.success(t('admin.userUpdatedSuccess'));
-      return response.data;
-    } catch (error) {
-      // Error is handled by interceptor
-      throw error;
-    }
+    const response = await api.updateAdminUser(userId, data);
+    setUsers((prevUsers) =>
+      prevUsers.map((user) =>
+        user.id === userId ? { ...user, ...response.data } : user
+      )
+    );
+    toast.success(t('admin.userUpdatedSuccess'));
+    return response.data;
   };
 
   const handleAddUser = async (userData) => {

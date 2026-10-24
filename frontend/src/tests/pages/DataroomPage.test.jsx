@@ -852,13 +852,13 @@ describe('DataroomPage', () => {
 
     describe('Direct Uploads', () => {
         beforeEach(() => {
-            api.ensureDataroomFolderPaths = vi.fn().mockResolvedValue({
+            api.ensureDataroomFolderPaths.mockResolvedValue({
                 data: {
                     detail: "Folder structure ensured successfully.",
                     path_mappings: { 'UploadedFolder': 'UploadedFolder' }
                 }
             });
-            api.uploadDataroomDocument = vi.fn().mockResolvedValue({ data: { id: 'ddoc_new' } });
+            api.uploadDataroomDocument.mockResolvedValue({ data: { id: 'ddoc_new' } });
         });
 
         it('should show the Upload options and handle file selection and folder selection upload', async () => {
@@ -892,7 +892,7 @@ describe('DataroomPage', () => {
         });
 
         it('should handle folder upload with conflict-resolved path mappings', async () => {
-            api.ensureDataroomFolderPaths = vi.fn().mockResolvedValue({
+            api.ensureDataroomFolderPaths.mockResolvedValue({
                 data: {
                     detail: "Folder structure ensured successfully.",
                     path_mappings: { 'UploadedFolder': 'UploadedFolder (1)' }
