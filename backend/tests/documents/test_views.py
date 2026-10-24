@@ -2351,6 +2351,52 @@ def test_trash_list_filters_to_root_level_deleted_items_only(api_client, user, o
 
 
 @pytest.mark.django_db
+def test_trash_list_pagination_metadata(api_client, user, organization):
+    """
+    Test: GET /api/v1/trash/ returns pagination metadata including total_pages and page_size.
+    With 25 deleted items, page 1 returns total_pages=3 and 10 items.
+    """
+    from django.utils import timezone
+    api_client.force_authenticate(user=user)
+    root_folder = Folder.objects.get_root_for_org(organization)
+
+    # Create 25 soft-deleted documents
+    now = timezone.now()
+    Document.objects.bulk_create([
+        Document(
+            name=f"DeletedDoc_{i}.pdf",
+            organization=organization,
+            created_by=user,
+            folder=root_folder,
+            status="ready",
+            deleted_at=now,
+            deleted_by=user,
+        )
+        for i in range(25)
+    ])
+
+    # Fetch default page 1
+    res = api_client.get('/api/v1/trash/')
+    assert res.status_code == status.HTTP_200_OK
+    data = res.json()
+    assert data['count'] == 25
+    assert data['total_pages'] == 3
+    assert data['current_page'] == 1
+    assert data['page_size'] == 10
+    assert len(data['results']) == 10
+
+    # Fetch with page_size=20
+    res_20 = api_client.get('/api/v1/trash/?page_size=20')
+    assert res_20.status_code == status.HTTP_200_OK
+    data_20 = res_20.json()
+    assert data_20['count'] == 25
+    assert data_20['total_pages'] == 2
+    assert data_20['current_page'] == 1
+    assert data_20['page_size'] == 20
+    assert len(data_20['results']) == 20
+
+
+@pytest.mark.django_db
 def test_trash_restore_returns_rename_feedback(api_client, user, organization):
     """
     RED Test: Restoring a soft-deleted document that undergoes collision renaming

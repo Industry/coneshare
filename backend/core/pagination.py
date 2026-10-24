@@ -7,20 +7,8 @@ class StandardResultsSetPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 1000
 
-
-class AdminPagination(PageNumberPagination):
-    """
-    Unified pagination class for all admin panel table lists.
-    Standardizes page sizing (default: 10), navigation metadata (count, total_pages,
-    current_page, page_size), and optional org-wide metrics payload across all
-    administrative endpoints.
-    """
-    page_size = 10
-    page_size_query_param = 'page_size'
-    max_page_size = 100
-
     def get_paginated_response(self, data):
-        response_data = {
+        return Response({
             'count': self.page.paginator.count,
             'total_pages': self.page.paginator.num_pages,
             'current_page': self.page.number,
@@ -28,11 +16,7 @@ class AdminPagination(PageNumberPagination):
             'next': self.get_next_link(),
             'previous': self.get_previous_link(),
             'results': data,
-        }
-        metrics = getattr(self, 'metrics', None)
-        if metrics is not None:
-            response_data['metrics'] = metrics
-        return Response(response_data)
+        })
 
     def get_paginated_response_schema(self, schema):
         return {
@@ -66,11 +50,34 @@ class AdminPagination(PageNumberPagination):
                     'format': 'uri',
                     'example': 'http://api.example.org/accounts/?page=2',
                 },
-                'metrics': {
-                    'type': 'object',
-                    'nullable': True,
-                    'additionalProperties': True,
-                },
                 'results': schema,
             },
         }
+
+
+class AdminPagination(StandardResultsSetPagination):
+    """
+    Unified pagination class for all admin panel table lists.
+    Standardizes page sizing (default: 10), navigation metadata (count, total_pages,
+    current_page, page_size), and optional org-wide metrics payload across all
+    administrative endpoints.
+    """
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        response = super().get_paginated_response(data)
+        metrics = getattr(self, 'metrics', None)
+        if metrics is not None:
+            response.data['metrics'] = metrics
+        return response
+
+    def get_paginated_response_schema(self, schema):
+        base_schema = super().get_paginated_response_schema(schema)
+        base_schema['properties']['metrics'] = {
+            'type': 'object',
+            'nullable': True,
+            'additionalProperties': True,
+        }
+        return base_schema

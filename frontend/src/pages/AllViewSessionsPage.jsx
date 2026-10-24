@@ -13,7 +13,6 @@ export function AllViewSessionsPage() {
   const [viewsData, setViewsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
 
   const fetchViews = useCallback(async () => {
     try {
@@ -31,7 +30,7 @@ export function AllViewSessionsPage() {
     fetchViews();
   }, [fetchViews]);
 
-  const totalPages = viewsData ? Math.ceil(viewsData.count / pageSize) : 0;
+  const totalPages = viewsData?.total_pages ?? 1;
 
   return (
     <div className="container mx-auto p-4 sm:p-6">

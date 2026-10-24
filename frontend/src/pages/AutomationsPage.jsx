@@ -593,7 +593,7 @@ export function AutomationsPage() {
             <DeliveryLogsTable deliveries={deliveriesData.results || []} onReplay={handleReplay} replayingId={replayingId} />
             <Pagination
               currentPage={logsCurrentPage}
-              totalPages={Math.ceil((deliveriesData.count || 0) / logsPageSize)}
+              totalPages={deliveriesData.total_pages ?? 1}
               onPageChange={setLogsCurrentPage}
             />
           </section>

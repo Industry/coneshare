@@ -41,8 +41,7 @@ export function AdminLoginActivityPage() {
   const [activities, setActivities] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const pageSize = 10; // Corresponds to backend's StandardResultsSetPagination
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     const fetchActivities = async (page) => {
@@ -50,15 +49,13 @@ export function AdminLoginActivityPage() {
       try {
         const response = await api.getAdminLoginActivities(page);
         setActivities(response.data.results);
-        setTotalCount(response.data.count);
+        setTotalPages(response.data.total_pages ?? 1);
       } finally {
         setIsLoading(false);
       }
     };
     fetchActivities(currentPage);
   }, [currentPage]);
-
-  const totalPages = Math.ceil(totalCount / pageSize);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);

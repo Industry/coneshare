@@ -36,11 +36,7 @@ export default function TrashPage() {
       const loadedItems = response.data.results || response.data;
       setItems(loadedItems);
       setSelectedKeys(new Set());
-      if (response.data.count != null) {
-        setTotalPages(Math.max(1, Math.ceil(response.data.count / 20)));
-      } else {
-        setTotalPages(1);
-      }
+      setTotalPages(response.data.total_pages ?? 1);
     } catch (error) {
       toast.error(t('trash.failedToLoad'));
     } finally {
