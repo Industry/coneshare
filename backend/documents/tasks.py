@@ -59,9 +59,18 @@ def convert_office_to_pdf_task(version_id):
                 for chunk in response.iter_content(chunk_size=8192):
                     f_out.write(chunk)
 
-            # 2. Convert to PDF using LibreOffice
+            # 2. Convert to PDF using LibreOffice with an isolated user profile
+            profile_dir = temp_dir_path / "lo_profile"
+            profile_dir.mkdir(parents=True, exist_ok=True)
             subprocess.run(
-                ["libreoffice", "--headless", "--convert-to", "pdf", "--outdir", temp_dir, original_file_path],
+                [
+                    "libreoffice",
+                    f"-env:UserInstallation={profile_dir.as_uri()}",
+                    "--headless",
+                    "--convert-to", "pdf",
+                    "--outdir", temp_dir,
+                    str(original_file_path),
+                ],
                 check=True, timeout=300  # 5 minute timeout
             )
             
@@ -681,9 +690,18 @@ def generate_spreadsheet_preview_task(version_id):
                 # Convert legacy .xls to modern .xlsx using headless LibreOffice in an isolated directory
                 conv_dir = temp_dir_path / "converted"
                 conv_dir.mkdir(parents=True, exist_ok=True)
+                profile_dir = temp_dir_path / "lo_profile"
+                profile_dir.mkdir(parents=True, exist_ok=True)
                 try:
                     subprocess.run(
-                        ["libreoffice", "--headless", "--convert-to", "xlsx", "--outdir", str(conv_dir), str(original_file_path)],
+                        [
+                            "libreoffice",
+                            f"-env:UserInstallation={profile_dir.as_uri()}",
+                            "--headless",
+                            "--convert-to", "xlsx",
+                            "--outdir", str(conv_dir),
+                            str(original_file_path),
+                        ],
                         check=True, timeout=120, capture_output=True, text=True
                     )
                 except subprocess.CalledProcessError as proc_err:
