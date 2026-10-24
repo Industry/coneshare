@@ -28,7 +28,7 @@ class TestGeneratePdfPagesTask:
     @patch('documents.tasks.fileserver_client.generate_upload_url')
     @patch('documents.tasks.requests.get')
     @patch('documents.tasks.fileserver_client.generate_download_url')
-    @patch('documents.tasks.convert_from_bytes')
+    @patch('documents.tasks.convert_from_path')
     def test_task_processes_pdf_and_updates_db(self, mock_convert, mock_fs_download_url, mock_requests_get, mock_fs_upload_url, mock_requests_put, mock_pdfinfo, user):
         # Setup test-specific data
         document = Document.objects.create(
@@ -55,7 +55,7 @@ class TestGeneratePdfPagesTask:
         mock_get_response.raise_for_status.return_value = None
         mock_get_response.content = sample_pdf_bytes
         mock_requests_get.return_value = mock_get_response
-        mock_convert.return_value = mock_images
+        mock_convert.side_effect = [[image] for image in mock_images]
         mock_pdfinfo.return_value = {'Pages': 2}
         mock_fs_upload_url.side_effect = ["/upload/page1", "/upload/page2"]
         mock_put_response = MagicMock()
@@ -69,8 +69,10 @@ class TestGeneratePdfPagesTask:
         mock_fs_download_url.assert_called_once_with(version.storage_key)
         mock_requests_get.assert_called_once()
 
-        # 2. Assert that convert_from_bytes was called with the PDF data
-        mock_convert.assert_called_once_with(sample_pdf_bytes, fmt='png')
+        # 2. Assert that each page was rendered on its own
+        assert mock_convert.call_count == 2
+        for page_num, call in enumerate(mock_convert.call_args_list, start=1):
+            assert call.kwargs == {'fmt': 'png', 'first_page': page_num, 'last_page': page_num}
 
         # 3. Assert that file server upload was called for each page
         assert mock_fs_upload_url.call_count == 2
@@ -101,7 +103,7 @@ class TestGeneratePdfPagesTask:
     @patch('documents.tasks.fileserver_client.generate_upload_url')
     @patch('documents.tasks.requests.get')
     @patch('documents.tasks.fileserver_client.generate_download_url')
-    @patch('documents.tasks.convert_from_bytes')
+    @patch('documents.tasks.convert_from_path')
     def test_task_does_not_restore_stale_version_as_primary(
         self,
         mock_convert,
@@ -168,7 +170,7 @@ class TestGeneratePdfPagesTask:
         assert document.status_message == "Current version is ready."
 
     @patch('documents.tasks.pdfinfo_from_bytes')
-    @patch('documents.tasks.convert_from_bytes')
+    @patch('documents.tasks.convert_from_path')
     @patch('documents.tasks.requests.get')
     @patch('documents.tasks.fileserver_client.generate_download_url')
     @override_settings(MAX_PREVIEW_PAGES=10)
@@ -222,7 +224,7 @@ class TestGeneratePdfPagesTask:
         assert version.render_error == "Document has too many pages to generate a preview."
 
     @patch('documents.tasks.pdfinfo_from_bytes')
-    @patch('documents.tasks.convert_from_bytes')
+    @patch('documents.tasks.convert_from_path')
     @patch('documents.tasks.requests.get')
     @patch('documents.tasks.fileserver_client.generate_download_url')
     @override_settings(MAX_PREVIEW_PAGES=10)
@@ -282,7 +284,7 @@ class TestGeneratePdfPagesTask:
     @patch('documents.tasks.fileserver_client.generate_upload_url')
     @patch('documents.tasks.requests.get')
     @patch('documents.tasks.fileserver_client.generate_download_url')
-    @patch('documents.tasks.convert_from_bytes')
+    @patch('documents.tasks.convert_from_path')
     @patch('documents.tasks.PdfReader')
     def test_task_extracts_links_successfully(
         self,
@@ -388,7 +390,7 @@ class TestGeneratePdfPagesTask:
     @patch('documents.tasks.fileserver_client.generate_upload_url')
     @patch('documents.tasks.requests.get')
     @patch('documents.tasks.fileserver_client.generate_download_url')
-    @patch('documents.tasks.convert_from_bytes')
+    @patch('documents.tasks.convert_from_path')
     @patch('documents.tasks.PdfReader')
     def test_task_extracts_links_with_indirect_objects(
         self,
@@ -497,6 +499,107 @@ class TestGeneratePdfPagesTask:
             ]
         }
         assert page.page_links == expected_links
+
+    @patch('documents.tasks.pdfinfo_from_bytes')
+    @patch('documents.tasks.requests.put')
+    @patch('documents.tasks.fileserver_client.generate_upload_url')
+    @patch('documents.tasks.requests.get')
+    @patch('documents.tasks.fileserver_client.generate_download_url')
+    @patch('documents.tasks.convert_from_path')
+    def test_task_renders_and_uploads_one_page_at_a_time(self, mock_convert, mock_fs_download_url, mock_requests_get, mock_fs_upload_url, mock_requests_put, mock_pdfinfo, user):
+        """
+        Rendering all pages in one call keeps every page image in memory at once
+        (~16 MB per A4 page at 200 dpi), so long documents get the worker OOM-killed.
+        Each page must be rendered and uploaded before the next one is rendered.
+        """
+        document = Document.objects.create(
+            organization=user.organization,
+            created_by=user,
+            name="long.pdf",
+            status='processing',
+        )
+        version = DocumentVersion.objects.create(
+            document=document,
+            version_number=1,
+            original_storage_key="path/to/long.pdf",
+            storage_key="path/to/long.pdf",
+            is_primary=True,
+        )
+        sample_pdf_bytes = b"dummy-pdf-content"
+        events = []
+
+        def render_page(pdf_path, fmt, first_page, last_page):
+            assert Path(pdf_path).read_bytes() == sample_pdf_bytes
+            events.append(('render', first_page))
+            image = MagicMock()
+            image.save.side_effect = lambda buf, format: buf.write(f'img{first_page}'.encode())
+            return [image]
+
+        mock_fs_download_url.return_value = "/files/download/token"
+        mock_get_response = MagicMock()
+        mock_get_response.content = sample_pdf_bytes
+        mock_requests_get.return_value = mock_get_response
+        mock_pdfinfo.return_value = {'Pages': 3}
+        mock_convert.side_effect = render_page
+        mock_fs_upload_url.side_effect = lambda key: f"/upload/{key}"
+        mock_requests_put.side_effect = lambda url, data: events.append(('upload', data)) or MagicMock()
+
+        generate_pdf_pages_task(version.id)
+
+        assert events == [
+            ('render', 1), ('upload', b'img1'),
+            ('render', 2), ('upload', b'img2'),
+            ('render', 3), ('upload', b'img3'),
+        ]
+        assert list(
+            DocumentPage.objects.filter(document_version=version).order_by('page_number').values_list('page_number', flat=True)
+        ) == [1, 2, 3]
+        version.refresh_from_db()
+        assert version.num_pages == 3
+        assert version.render_status == DocumentVersion.RENDER_READY
+
+    @patch('documents.tasks.pdfinfo_from_bytes')
+    @patch('documents.tasks.requests.put')
+    @patch('documents.tasks.fileserver_client.generate_upload_url')
+    @patch('documents.tasks.requests.get')
+    @patch('documents.tasks.fileserver_client.generate_download_url')
+    @patch('documents.tasks.convert_from_path')
+    @patch('documents.tasks.fileserver_client.delete_file')
+    def test_task_marks_version_failed_when_a_page_renders_empty(self, mock_delete_file, mock_convert, mock_fs_download_url, mock_requests_get, mock_fs_upload_url, mock_requests_put, mock_pdfinfo, user):
+        document = Document.objects.create(
+            organization=user.organization,
+            created_by=user,
+            name="broken.pdf",
+            status='processing',
+        )
+        version = DocumentVersion.objects.create(
+            document=document,
+            version_number=1,
+            original_storage_key="path/to/broken.pdf",
+            storage_key="path/to/broken.pdf",
+            is_primary=True,
+        )
+        mock_fs_download_url.return_value = "/files/download/token"
+        mock_get_response = MagicMock()
+        mock_get_response.content = b"dummy-pdf-content"
+        mock_requests_get.return_value = mock_get_response
+        mock_pdfinfo.return_value = {'Pages': 2}
+        page_one = MagicMock()
+        page_one.save.side_effect = lambda buf, format: buf.write(b'img1')
+        mock_convert.side_effect = [[page_one], []]
+        mock_fs_upload_url.return_value = "/upload/page"
+        mock_requests_put.return_value = MagicMock()
+
+        generate_pdf_pages_task(version.id)
+
+        version.refresh_from_db()
+        assert version.render_status == DocumentVersion.RENDER_FAILED
+        assert "page 2" in version.render_error
+        assert not version.has_pages
+        # Pages from the failed attempt must not be left behind
+        assert not DocumentPage.objects.filter(document_version=version).exists()
+        mock_delete_file.assert_called_once_with("path/to/broken_page_1.png")
+
 
 @pytest.mark.django_db
 class TestGenerateVideoStreamTask:

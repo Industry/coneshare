@@ -7,7 +7,7 @@ import requests
 from pathlib import Path
 from io import BytesIO
 from celery import shared_task
-from pdf2image import convert_from_bytes, pdfinfo_from_bytes
+from pdf2image import convert_from_path, pdfinfo_from_bytes
 from pypdf import PdfReader
 from PIL import Image, ImageOps
 
@@ -183,6 +183,32 @@ def _extract_links_for_page(pdf_page, page_num):
 
 
 
+def _iter_pdf_page_images(pdf_bytes, page_count):
+    """
+    Yield (page_number, PIL image) for each page, rendering a single page per
+    pdftoppm call. The PDF is written to a temporary file once and reused for
+    every page.
+    """
+    with tempfile.NamedTemporaryFile(suffix='.pdf') as pdf_file:
+        pdf_file.write(pdf_bytes)
+        pdf_file.flush()
+        for page_num in range(1, page_count + 1):
+            images = convert_from_path(pdf_file.name, fmt='png', first_page=page_num, last_page=page_num)
+            if not images:
+                raise ValueError(f"Rendering returned no image for page {page_num} of {page_count}.")
+            yield page_num, images[0]
+
+
+def _discard_partial_pages(version, storage_keys):
+    """Best-effort removal of page records and files from a failed rendering attempt."""
+    version.pages.all().delete()
+    for storage_key in storage_keys:
+        try:
+            fileserver_client.delete_file(storage_key)
+        except Exception as e:
+            logger.warning(f"Could not delete partial page file {storage_key}: {e}")
+
+
 @shared_task
 def generate_pdf_pages_task(version_id):
     """
@@ -233,9 +259,6 @@ def generate_pdf_pages_task(version_id):
             logger.info(f"Skipping page generation for document {document.id}, page count ({page_count}) > {max_pages}.")
             return
 
-        # 2. Convert PDF pages to images (PNG)
-        images = convert_from_bytes(pdf_bytes, fmt='png')
-
         # Extract links using pypdf (best-effort)
         # We wrap the entire block in a single outer try-except. This catches document-level parsing
         # issues (e.g. invalid PDF header on PdfReader initialization, or metadata index errors)
@@ -259,31 +282,41 @@ def generate_pdf_pages_task(version_id):
         # Extract text layout using pdftotext (best-effort)
         page_text_by_num = extract_text_layout_for_pdf(pdf_bytes)
 
-        # 3. Save page images and create DB records
+        # 2. Render each page to PNG, upload it and create its DB record.
+        # Pages are rendered one at a time so that memory stays at a single page image
+        # instead of growing with the page count (~16 MB per A4 page at 200 dpi).
         base_path, _ = os.path.splitext(version.original_storage_key)
         version.pages.all().delete()
-        for i, image in enumerate(images):
-            page_num = i + 1
-            page_storage_key = f"{base_path}_page_{page_num}.png"
+        uploaded_keys = []
+        try:
+            for page_num, image in _iter_pdf_page_images(pdf_bytes, page_count):
+                page_storage_key = f"{base_path}_page_{page_num}.png"
 
-            buffer = BytesIO()
-            image.save(buffer, format='PNG')
-            
-            # TODO(refactor): Migrate to fileserver_client.upload_file(page_storage_key, buffer.getvalue()) in a separate chore PR
-            upload_url = fileserver_client.generate_upload_url(page_storage_key)
-            upload_response = requests.put(upload_url, data=buffer.getvalue())
-            upload_response.raise_for_status()
+                buffer = BytesIO()
+                image.save(buffer, format='PNG')
+                image.close()
 
-            DocumentPage.objects.create(
-                document_version=version,
-                page_number=page_num,
-                storage_key=page_storage_key,
-                page_links=page_links_by_num.get(page_num, {"links": []}),
-                metadata={"text_content": page_text_by_num.get(page_num, {"lines": []})},
-            )
+                # TODO(refactor): Migrate to fileserver_client.upload_file(page_storage_key, buffer.getvalue()) in a separate chore PR
+                upload_url = fileserver_client.generate_upload_url(page_storage_key)
+                upload_response = requests.put(upload_url, data=buffer.getvalue())
+                upload_response.raise_for_status()
+                uploaded_keys.append(page_storage_key)
 
-        # 4. Finalize status and metadata
-        num_pages = len(images)
+                DocumentPage.objects.create(
+                    document_version=version,
+                    page_number=page_num,
+                    storage_key=page_storage_key,
+                    page_links=page_links_by_num.get(page_num, {"links": []}),
+                    metadata={"text_content": page_text_by_num.get(page_num, {"lines": []})},
+                )
+        except Exception:
+            # Pages are uploaded as they are rendered, so a failure part-way through
+            # must not leave the pages of this attempt behind.
+            _discard_partial_pages(version, uploaded_keys)
+            raise
+
+        # 3. Finalize status and metadata
+        num_pages = page_count
         version.refresh_from_db(fields=['is_primary'])
         version.num_pages = num_pages
         version.has_pages = True
