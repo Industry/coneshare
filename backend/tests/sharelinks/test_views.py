@@ -1859,6 +1859,51 @@ class TestShareLinkPasswordProtection:
         response = public_client.get('/api/v1/links/non-existent/public-meta/')
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
+    def test_public_meta_for_expired_link_returns_410(self, public_client, share_link):
+        """Test that an expired link returns 410 Gone and does not disclose metadata."""
+        share_link.expires_at = timezone.now() - timedelta(days=1)
+        share_link.save()
+        response = public_client.get(f'/api/v1/links/{share_link.slug}/public-meta/')
+        assert response.status_code == status.HTTP_410_GONE
+        assert response.json()["message"] == "This link has expired."
+
+    def test_verify_password_for_expired_link_returns_410(self, public_client, share_link_with_password):
+        """Test that verifying password on an expired link returns 410 Gone."""
+        share_link_with_password.expires_at = timezone.now() - timedelta(days=1)
+        share_link_with_password.save()
+        response = public_client.post(
+            f'/api/v1/links/{share_link_with_password.slug}/verify-password/',
+            {'password': 'password123'}
+        )
+        assert response.status_code == status.HTTP_410_GONE
+        assert response.json()["message"] == "This link has expired."
+
+    def test_request_access_for_expired_link_returns_410(self, public_client, share_link_with_password_and_email):
+        """Test that requesting access on an expired link returns 410 Gone."""
+        share_link_with_password_and_email.expires_at = timezone.now() - timedelta(days=1)
+        share_link_with_password_and_email.save()
+        response = public_client.post(
+            f'/api/v1/links/{share_link_with_password_and_email.slug}/request-access/',
+            {'email': 'viewer@example.com'}
+        )
+        assert response.status_code == status.HTTP_410_GONE
+        assert response.json()["message"] == "This link has expired."
+
+    def test_accept_nda_for_expired_link_returns_410(self, public_client, user, document):
+        """Test that accepting NDA on an expired link returns 410 Gone."""
+        link = ShareLink.objects.create(
+            document=document,
+            created_by=user,
+            require_nda=True,
+            nda_text="Confidential terms.",
+            nda_version=1,
+            expires_at=timezone.now() - timedelta(days=1)
+        )
+        response = public_client.post(f'/api/v1/links/{link.slug}/accept-nda/', {})
+        assert response.status_code == status.HTTP_410_GONE
+        assert response.json()["message"] == "This link has expired."
+
+
     def test_public_meta_dataroom_logo_mode_and_resolved_logo(self, public_client, user, dataroom):
         from django.core.files.uploadedfile import SimpleUploadedFile
 

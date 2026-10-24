@@ -394,4 +394,15 @@ COMPOSE_PROJECT_NAME=coneshare docker-compose exec frontend npm test -- --run sr
 - **Context/Implication:** 1. `experimentalMinChunkSize` in Rollup caused route cross-contamination where small pages (`PasswordSettingsPage`, `AdminLoginActivityPage`) were merged into shared UI chunks, causing public Dataroom visitors to download admin code. 2. Statically importing `DataroomViewer` in `ShareLinkViewerPage` caused password/email/NDA protected link gates to eagerly download the entire dataroom list engine before authentication.
 - **Resolution/Action:** **[OVERRIDE]** 1. Replaced `experimentalMinChunkSize` with explicit `shared-ui` in `vite.config.js` `manualChunks` to safely group UI primitives. 2. Lazy-loaded `DataroomViewer` via `React.lazy()` with `<Suspense>`, keeping gatekeeper views lightweight (~39KB). 3. Created `DataroomLoadingProgress` with an animated eased progress bar and dynamic phased status messages to reduce perceived waiting time. Documented full strategy in `docs/strategy/frontend-bundle-optimization-strategy.md`.
 
+### [2026-10-24] Session Entry
+- **Category:** Architecture Choice
+- **Context/Implication:** GitHub Issue #373 identified that expired share links leaked target document names and owner info via `/public-meta/` and pre-access verification endpoints because `_get_active_share_link` did not check `expires_at`.
+- **Resolution/Action:** Enforced unconditional `expires_at` check in `_get_active_share_link` raising `LinkExpired` (HTTP 410 Gone) across all public share link endpoints without exceptions. In the frontend viewer, intercept 410 responses to render a dedicated, privacy-safe "Link Expired" state with multi-language i18n support across all 6 locales.
+
+### [2026-10-24] Session Entry
+- **Category:** Architecture Choice
+- **Context/Implication:** Frontend `t()` calls repeatedly included inline `defaultValue: '...'` parameters, duplicating strings already present in `locales/*/translation.json` and causing text drift between JSX components and locale catalogs.
+- **Resolution/Action:** Prohibited inline `defaultValue` or fallback string parameters in frontend `t('key')` calls (documented as Rule 10 in `docs/tech_stack_guidelines.md`). All user-facing strings must be maintained exclusively in the 6 locale catalogs (`frontend/src/locales/*/translation.json`) and called directly via `t('key')`.
+
+
 

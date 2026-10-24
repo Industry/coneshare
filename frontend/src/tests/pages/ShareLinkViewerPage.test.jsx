@@ -598,5 +598,69 @@ describe('ShareLinkViewerPage', () => {
 
       expect(api.getShareLinkViewData).toHaveBeenCalledTimes(2);
     });
+
+    it('renders friendly link expired UI when view data returns 410 Gone', async () => {
+      api.getShareLinkPublicMeta.mockRejectedValue({
+        response: { status: 410, data: { message: 'This link has expired.' } },
+      });
+      api.getShareLinkViewData.mockRejectedValue({
+        response: { status: 410, data: { message: 'This link has expired.' } },
+      });
+
+      renderComponent('/view/test-slug');
+
+      await waitFor(() => {
+        expect(screen.getByText('Link Expired')).toBeInTheDocument();
+      });
+
+      expect(
+        screen.getByText('This share link has expired and is no longer accessible.')
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Please contact the document owner to request a new link.')
+      ).toBeInTheDocument();
+      // Ensure owner name is not leaked
+      expect(screen.queryByText('Alice Owner')).not.toBeInTheDocument();
+    });
+
+    it('renders localized link expired UI when language is zh-hans', async () => {
+      await i18n.changeLanguage('zh-hans');
+      api.getShareLinkPublicMeta.mockRejectedValue({
+        response: { status: 410, data: { message: 'This link has expired.' } },
+      });
+      api.getShareLinkViewData.mockRejectedValue({
+        response: { status: 410, data: { message: 'This link has expired.' } },
+      });
+
+      renderComponent('/view/test-slug');
+
+      await waitFor(() => {
+        expect(screen.getByText('此链接已过期')).toBeInTheDocument();
+      });
+
+      expect(
+        screen.getByText('该分享链接已超过有效期，无法继续访问。')
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('如需查看该内容，请联系文档所有者获取最新链接。')
+      ).toBeInTheDocument();
+    });
+
+    it('normalizes string error response and renders error screen without throwing', async () => {
+      api.getShareLinkPublicMeta.mockRejectedValue(new Error('Network error'));
+      api.getShareLinkViewData.mockRejectedValue({
+        response: {
+          status: 502,
+          data: 'Bad Gateway',
+        },
+      });
+
+      renderComponent('/view/test-slug');
+
+      await waitFor(() => {
+        expect(screen.getByText('Bad Gateway')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Link Error')).toBeInTheDocument();
+    });
   });
 
