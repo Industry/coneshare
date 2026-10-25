@@ -321,10 +321,14 @@ def upgrade_dataroom_to_v2(dataroom: Dataroom) -> bool:
 def remove_dataroom_content(dataroom: Dataroom, dataroom_doc_ids: list = None, dataroom_folder_ids: list = None):
     """
     Explicitly removes documents and folders from a Dataroom:
-    1. Identifies all DataroomDocument rows being deleted (including in subfolders).
-    2. For direct uploads that have no other references in other datarooms, deletes
-       the backing Document, storage files, and decrements quota.
-    3. Deletes DataroomDocument and DataroomFolder records.
+    1. Recursively expands all descendant folder IDs within the specified dataroom_folder_ids.
+    2. Collects all DataroomDocument associations being deleted (supporting both DataroomDocument.id
+       and backing Document.id matching, as well as documents contained in deleted folders).
+    3. Identifies direct-upload documents that have no remaining references across any datarooms.
+       Evaluates all selected associations per Document to prevent order-dependent skips, and marks
+       the backing Document and storage files for physical deletion.
+    4. Deletes DataroomDocument and DataroomFolder records, and cleans up backing storage/files for
+       surviving unreferenced direct-upload documents.
     """
     dataroom_doc_ids = dataroom_doc_ids or []
     dataroom_folder_ids = dataroom_folder_ids or []
@@ -341,26 +345,33 @@ def remove_dataroom_content(dataroom: Dataroom, dataroom_doc_ids: list = None, d
                 stack.append(child)
 
     # 2. Collect all DataroomDocument objects being removed
+    # Allow dataroom_doc_ids to match either DataroomDocument.id or workspace Document.id
     ddocs_to_remove = list(
         DataroomDocument.objects.filter(
-            Q(id__in=dataroom_doc_ids) | Q(folder_id__in=all_folder_ids),
+            Q(id__in=dataroom_doc_ids) | Q(document_id__in=dataroom_doc_ids) | Q(folder_id__in=all_folder_ids),
             dataroom=dataroom
         ).select_related('document', 'document__folder', 'folder')
     )
     ddoc_ids_to_remove = {d.id for d in ddocs_to_remove}
 
     # 3. Identify direct upload documents that have no other references
+    # A single Document may have multiple DataroomDocument associations in the same dataroom
+    # (e.g. directly uploaded to a subfolder and also imported or linked elsewhere via API/legacy).
+    # We group all associations by backing Document and check whether ANY association in the group
+    # represents a direct upload. This eliminates order-dependent skipping (which occurred when an
+    # arbitrary seen_doc_ids loop encountered a linked association before a direct-upload association)
+    # and ensures physical storage files are reliably reclaimed whenever all references to a direct
+    # upload are removed.
     backing_docs_to_delete = []
-    seen_doc_ids = set()
-
+    docs_to_ddocs = {}
     for ddoc in ddocs_to_remove:
-        doc = ddoc.document
-        if not doc or doc.id in seen_doc_ids:
-            continue
-        seen_doc_ids.add(doc.id)
+        if ddoc.document:
+            docs_to_ddocs.setdefault(ddoc.document, []).append(ddoc)
 
-        if is_direct_upload_dataroom_document(ddoc):
-            # Check if this document is referenced in any other DataroomDocument
+    for doc, ddocs in docs_to_ddocs.items():
+        if any(is_direct_upload_dataroom_document(d) for d in ddocs):
+            # Check if this backing document is still referenced by any surviving DataroomDocument
+            # (either in this dataroom or other datarooms) that is NOT being removed.
             other_references_exist = (
                 DataroomDocument.objects.filter(document=doc)
                 .exclude(id__in=ddoc_ids_to_remove)
@@ -385,8 +396,8 @@ def remove_dataroom_content(dataroom: Dataroom, dataroom_doc_ids: list = None, d
                 parent_folders_to_touch.add(folder.parent)
 
     with transaction.atomic():
-        if dataroom_doc_ids:
-            DataroomDocument.objects.filter(id__in=dataroom_doc_ids, dataroom=dataroom).delete()
+        if ddoc_ids_to_remove:
+            DataroomDocument.objects.filter(id__in=ddoc_ids_to_remove, dataroom=dataroom).delete()
         if dataroom_folder_ids:
             DataroomFolder.objects.filter(id__in=dataroom_folder_ids, dataroom=dataroom).delete()
         for parent_folder in parent_folders_to_touch:

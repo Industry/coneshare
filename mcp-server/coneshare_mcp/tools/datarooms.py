@@ -52,11 +52,18 @@ def register_dataroom_tools(mcp: FastMCP) -> None:
     async def remove_content_from_dataroom(
         ctx: Context,
         dataroom_id: str = Field(description="ULID of the target dataroom"),
-        document_ids: list[str] = Field(description="List of document ULIDs to remove from the dataroom"),
+        document_ids: Optional[list[str]] = Field(default=None, description="List of document or dataroom-document ULIDs to remove from the dataroom"),
+        folder_ids: Optional[list[str]] = Field(default=None, description="Optional list of dataroom folder ULIDs to remove from the dataroom"),
     ) -> dict:
-        """Remove workspace documents from an existing dataroom."""
+        """Remove workspace documents or folders from an existing dataroom."""
+        if not document_ids and not folder_ids:
+            return {"error": True, "message": "At least one document_id or folder_id must be provided to remove content from the dataroom."}
         client = ConeshareClient.from_ctx(ctx)
-        return await client.remove_content_from_dataroom(dataroom_id=dataroom_id, document_ids=document_ids)
+        return await client.remove_content_from_dataroom(
+            dataroom_id=dataroom_id,
+            document_ids=document_ids,
+            dataroom_folder_ids=folder_ids,
+        )
 
     @mcp.tool()
     async def update_dataroom(

@@ -9,8 +9,8 @@ class TestAnalytics(BaseMCPTestCase):
     async def test_get_document_analytics(self):
         async def mock_request(self_client, method, path, params=None, json_data=None, files=None):
             self.assertEqual(method, "GET")
-            self.assertEqual(path, "/analytics/documents/doc_777/")
-            return {"total_views": 150, "unique_viewers": 12}
+            self.assertEqual(path, "/documents/doc_777/stats/")
+            return {"total_views": 150, "total_duration_seconds": 3600, "avg_duration_seconds": 24.0, "total_downloads": 5}
 
         old_request = ConeshareClient._request
         ConeshareClient._request = mock_request
@@ -18,7 +18,7 @@ class TestAnalytics(BaseMCPTestCase):
             client = ConeshareClient(api_key="cs_live_testkey123456789")
             res = await client.get_document_analytics("doc_777")
             self.assertEqual(res["total_views"], 150)
-            self.assertEqual(res["unique_viewers"], 12)
+            self.assertEqual(res["total_downloads"], 5)
         finally:
             ConeshareClient._request = old_request
 

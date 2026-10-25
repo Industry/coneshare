@@ -1,5 +1,7 @@
 from __future__ import annotations
 import logging
+import math
+import os
 from typing import Any, Dict, Optional
 import httpx
 from fastmcp import Context
@@ -66,8 +68,15 @@ class ConeshareClient:
 
                 try:
                     error_detail = response.json()
-                    if isinstance(error_detail, dict) and "detail" in error_detail:
-                        msg = str(error_detail["detail"])
+                    if isinstance(error_detail, dict):
+                        if "detail" in error_detail:
+                            msg = str(error_detail["detail"])
+                        elif "non_field_errors" in error_detail:
+                            errs = error_detail["non_field_errors"]
+                            msg = ", ".join(errs) if isinstance(errs, list) else str(errs)
+                        else:
+                            # Format field errors: "field_name: error message"
+                            msg = "; ".join(f"{k}: {', '.join(v) if isinstance(v, list) else v}" for k, v in error_detail.items())
                     else:
                         msg = str(error_detail)
                 except Exception:
@@ -80,20 +89,61 @@ class ConeshareClient:
     @staticmethod
     def _paginate(res: Any, page: int, page_size: int) -> dict[str, Any]:
         if isinstance(res, list):
+            total_count = len(res)
+            start = max(0, (page - 1) * page_size)
+            end = start + page_size
+            items = res[start:end]
+            total_pages = math.ceil(total_count / page_size) if page_size > 0 else 1
             return {
-                "items": res,
-                "total_count": len(res),
+                "items": items,
+                "total_count": total_count,
                 "page": page,
                 "page_size": page_size,
-                "has_next": False,
+                "total_pages": total_pages,
+                "has_next": end < total_count,
             }
+
+        total_count = res.get("count", len(res.get("results", [])))
+        current_page = res.get("current_page", page)
+        actual_page_size = res.get("page_size", page_size)
+        total_pages = res.get(
+            "total_pages",
+            math.ceil(total_count / actual_page_size) if actual_page_size > 0 else 1,
+        )
         return {
             "items": res.get("results", []),
-            "total_count": res.get("count", 0),
-            "page": page,
-            "page_size": page_size,
+            "total_count": total_count,
+            "page": current_page,
+            "page_size": actual_page_size,
+            "total_pages": total_pages,
             "has_next": bool(res.get("next")),
         }
+
+    @staticmethod
+    def _normalize_upload_path(path: Optional[str], file_name: str) -> Optional[str]:
+        if not path:
+            return None
+        clean_path = path.strip().strip("/")
+        if not clean_path:
+            return None
+
+        # Prevent directory traversal in destination folder path
+        parts = [p.strip() for p in clean_path.split("/") if p.strip()]
+        if any(p == ".." or p == "." for p in parts):
+            raise ValueError(f"Path traversal ('..' or '.') is not allowed in destination path: '{path}'")
+
+        folder_path = "/".join(parts)
+        if not folder_path:
+            return None
+
+        # If clean_path already ends with the target file_name, preserve it as-is.
+        if folder_path == file_name or folder_path.endswith(f"/{file_name}"):
+            return folder_path
+
+        # Treat path strictly as a destination folder and append file_name.
+        # This correctly preserves dotted folder names (e.g. 'reports.2024')
+        # without guessing file vs folder from file extensions.
+        return f"{folder_path}/{file_name}"
 
     # --- Documents API ---
 
@@ -126,8 +176,6 @@ class ConeshareClient:
             return res
         return self._paginate(res, page, page_size)
 
-
-
     async def delete_document(self, document_id: str) -> dict[str, Any]:
         return await self._request("DELETE", f"/documents/{document_id}/")
 
@@ -141,8 +189,9 @@ class ConeshareClient:
             "file_name": file_name,
             "file_size": file_size,
         }
-        if path:
-            payload["path"] = path
+        normalized_path = self._normalize_upload_path(path, file_name)
+        if normalized_path:
+            payload["path"] = normalized_path
         return await self._request("POST", "/uploads/document/request/", json_data=payload)
 
     async def finalize_document_upload(
@@ -159,8 +208,9 @@ class ConeshareClient:
             "file_size": file_size,
             "content_type": content_type,
         }
-        if path:
-            payload["path"] = path
+        normalized_path = self._normalize_upload_path(path, unique_name)
+        if normalized_path:
+            payload["path"] = normalized_path
         return await self._request("POST", "/uploads/document/finalize/", json_data=payload)
 
     async def update_document(
@@ -250,8 +300,19 @@ class ConeshareClient:
         payload = {"document_ids": document_ids}
         return await self._request("POST", f"/datarooms/{dataroom_id}/add-content/", json_data=payload)
 
-    async def remove_content_from_dataroom(self, dataroom_id: str, document_ids: list[str]) -> dict[str, Any]:
-        payload = {"document_ids": document_ids}
+    async def remove_content_from_dataroom(
+        self,
+        dataroom_id: str,
+        document_ids: Optional[list[str]] = None,
+        dataroom_document_ids: Optional[list[str]] = None,
+        dataroom_folder_ids: Optional[list[str]] = None,
+    ) -> dict[str, Any]:
+        doc_ids = dataroom_document_ids or document_ids
+        payload: dict[str, Any] = {}
+        if doc_ids:
+            payload["dataroom_document_ids"] = doc_ids
+        if dataroom_folder_ids:
+            payload["dataroom_folder_ids"] = dataroom_folder_ids
         return await self._request("POST", f"/datarooms/{dataroom_id}/remove-content/", json_data=payload)
 
     async def update_dataroom(
@@ -298,7 +359,7 @@ class ConeshareClient:
     # --- Analytics API ---
 
     async def get_document_analytics(self, document_id: str) -> dict[str, Any]:
-        return await self._request("GET", f"/analytics/documents/{document_id}/")
+        return await self._request("GET", f"/documents/{document_id}/stats/")
 
     async def list_view_sessions(
         self,
