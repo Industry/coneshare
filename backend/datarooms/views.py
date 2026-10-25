@@ -700,6 +700,23 @@ class DataroomViewSet(viewsets.ModelViewSet):
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
+        try:
+            file_info = fileserver_client.get_file_info(validated_data['storage_key'])
+        except APIException as e:
+            logger.error(f"Failed to check file info for key {validated_data['storage_key']}: {e}")
+            return Response(
+                {"detail": "Failed to verify file on storage server."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        if not file_info or not file_info.get('exists') or file_info.get('size', 0) <= 0:
+            return Response(
+                {"detail": "Uploaded file not found on storage server."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        actual_file_size = file_info['size']
+
         destination_folder = validated_data.get('destination_folder_id')
 
         relative_path = validated_data.get('path')
@@ -741,7 +758,7 @@ class DataroomViewSet(viewsets.ModelViewSet):
                 if locked_dataroom.storage_quota_mb and locked_dataroom.storage_quota_mb > 0:
                     current_room_usage = get_dataroom_storage_used_bytes(locked_dataroom)
                     room_quota_bytes = locked_dataroom.storage_quota_mb * 1024 * 1024
-                    if current_room_usage + validated_data['file_size'] > room_quota_bytes:
+                    if current_room_usage + actual_file_size > room_quota_bytes:
                         return Response(
                             {
                                 'detail': f"Uploading this file would exceed the Dataroom storage limit of {locked_dataroom.storage_quota_mb} MB."
@@ -757,7 +774,7 @@ class DataroomViewSet(viewsets.ModelViewSet):
                     folder=library_folder,
                     storage_key=validated_data['storage_key'],
                     unique_name=validated_data['unique_name'],
-                    file_size=validated_data['file_size'],
+                    file_size=actual_file_size,
                     content_type=validated_data['content_type'],
                     track_user_quota=track_user_quota,
                 )

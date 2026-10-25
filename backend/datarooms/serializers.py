@@ -727,7 +727,7 @@ class EnsureDataroomFolderPathsSerializer(serializers.Serializer):
 
 class DataroomUploadRequestSerializer(serializers.Serializer):
     file_name = serializers.CharField()
-    file_size = serializers.IntegerField()
+    file_size = serializers.IntegerField(min_value=1)
     destination_folder_id = serializers.PrimaryKeyRelatedField(
         queryset=DataroomFolder.objects.all(), required=False, allow_null=True, default=None
     )
@@ -740,7 +740,6 @@ class DataroomUploadRequestSerializer(serializers.Serializer):
 class DataroomUploadFinalizeSerializer(serializers.Serializer):
     storage_key = serializers.CharField()
     unique_name = serializers.CharField()
-    file_size = serializers.IntegerField()
     content_type = serializers.CharField(allow_blank=True)
     destination_folder_id = serializers.PrimaryKeyRelatedField(
         queryset=DataroomFolder.objects.all(), required=False, allow_null=True, default=None

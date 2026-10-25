@@ -100,7 +100,6 @@ class TestDocuments(BaseMCPTestCase):
             fin_res = await client.finalize_document_upload(
                 storage_key=req_res["storage_key"],
                 unique_name=req_res["unique_name"],
-                file_size=1024,
             )
             self.assertEqual(fin_res["id"], "doc_new123")
         finally:
@@ -141,7 +140,6 @@ class TestDocuments(BaseMCPTestCase):
             await client.finalize_document_upload(
                 storage_key=req_res["storage_key"],
                 unique_name=req_res["unique_name"],
-                file_size=2048,
                 path="exports",
             )
             self.assertEqual(recorded_paths["finalize"], "exports/my_report_unique.pdf")
@@ -191,7 +189,6 @@ class TestDocuments(BaseMCPTestCase):
                 ctx=mock_ctx,
                 storage_key="org_1/file.pdf",
                 unique_name="file.pdf",
-                file_size=100,
                 content_type="application/octet-stream",
                 path=None,
             )
@@ -199,7 +196,6 @@ class TestDocuments(BaseMCPTestCase):
         mock_client.finalize_document_upload.assert_awaited_once_with(
             storage_key="org_1/file.pdf",
             unique_name="file.pdf",
-            file_size=100,
             content_type="application/octet-stream",
             path=None,
         )

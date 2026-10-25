@@ -229,7 +229,7 @@ class FileRequestUploadRequestView(APIView):
 
     class FileRequestUploadRequestSerializer(serializers.Serializer):
         file_name = serializers.CharField()
-        file_size = serializers.IntegerField()
+        file_size = serializers.IntegerField(min_value=1)
 
     class FileRequestUploadResponseSerializer(serializers.Serializer):
         upload_url = serializers.CharField()
@@ -333,6 +333,30 @@ class FileRequestUploadFinalizeView(APIView):
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
+        file_type_error = _validate_allowed_file_types(
+            file_request=file_request,
+            file_name=validated_data['unique_name'],
+        )
+        if file_type_error:
+            return Response({"detail": file_type_error}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            file_info = fileserver_client.get_file_info(validated_data['storage_key'])
+        except APIException as e:
+            logger.error(f"Failed to check file info for key {validated_data['storage_key']}: {e}")
+            return Response(
+                {"detail": "Failed to verify file on storage server."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        if not file_info or not file_info.get('exists') or file_info.get('size', 0) <= 0:
+            return Response(
+                {"detail": "Uploaded file not found on storage server."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        actual_file_size = file_info['size']
+
         visitor_context = _get_visitor_context(request)
         security_event_payload = {
             'organization_id': str(file_request.created_by.organization_id),
@@ -343,16 +367,28 @@ class FileRequestUploadFinalizeView(APIView):
             'uploaded_by_name': validated_data['uploader_name'],
             'uploaded_by_email': validated_data['uploader_email'],
             'uploaded_file_name': validated_data['unique_name'],
-            'uploaded_file_size': validated_data['file_size'],
+            'uploaded_file_size': actual_file_size,
             'event_datetime': timezone.now().isoformat(),
             **visitor_context,
         }
-        file_type_error = _validate_allowed_file_types(
-            file_request=file_request,
-            file_name=validated_data['unique_name'],
-        )
-        if file_type_error:
-            return Response({"detail": file_type_error}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate against link constraints and owner quota on finalize
+        if file_request.max_file_size and actual_file_size > file_request.max_file_size:
+            return Response(
+                {"detail": "File size exceeds the maximum allowed for this link."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            check_user_quota_on_upload(
+                user=file_request.created_by,
+                new_file_size=actual_file_size
+            )
+        except QuotaExceededError:
+            return Response(
+                {'detail': "Upload failed due to a server-side storage limit."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         try:
             scan_storage_key_or_raise(validated_data['storage_key'])
@@ -362,7 +398,7 @@ class FileRequestUploadFinalizeView(APIView):
                     folder=file_request.folder,
                     storage_key=validated_data['storage_key'],
                     unique_name=validated_data['unique_name'],
-                    file_size=validated_data['file_size'],
+                    file_size=actual_file_size,
                     content_type=validated_data['content_type'],
                 )
                 # Store uploader info in the document's metadata
@@ -392,7 +428,7 @@ class FileRequestUploadFinalizeView(APIView):
                     'uploaded_by_name': validated_data['uploader_name'],
                     'uploaded_by_email': validated_data['uploader_email'],
                     'uploaded_file_name': document.name,
-                    'uploaded_file_size': validated_data['file_size'],
+                    'uploaded_file_size': actual_file_size,
                     'custom_field_values': custom_field_values,
                     'event_datetime': timezone.now().isoformat(),
                     **visitor_context,
@@ -409,7 +445,7 @@ class FileRequestUploadFinalizeView(APIView):
                 severity=SecurityThreatEvent.Severity.HIGH,
                 storage_key=validated_data['storage_key'],
                 file_name=validated_data['unique_name'],
-                file_size=validated_data['file_size'],
+                file_size=actual_file_size,
                 content_type=validated_data['content_type'],
                 uploader_name=validated_data['uploader_name'],
                 uploader_email=validated_data['uploader_email'],
@@ -446,7 +482,7 @@ class FileRequestUploadFinalizeView(APIView):
                 severity=SecurityThreatEvent.Severity.MEDIUM,
                 storage_key=validated_data['storage_key'],
                 file_name=validated_data['unique_name'],
-                file_size=validated_data['file_size'],
+                file_size=actual_file_size,
                 content_type=validated_data['content_type'],
                 uploader_name=validated_data['uploader_name'],
                 uploader_email=validated_data['uploader_email'],

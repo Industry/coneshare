@@ -225,7 +225,6 @@ def validate_storage_key(storage_key: str, organization_id) -> str:
 
     return normalized_key
 
-
 def create_document_from_upload(
 
     requesting_user: User,

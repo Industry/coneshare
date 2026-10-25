@@ -247,6 +247,27 @@ class TestFileServerClient:
 
         assert "File upload failed" in str(excinfo.value)
 
+    @override_settings(
+        CORE_API_URL="http://core-api.test",
+        INTERNAL_API_TOKEN="test-token",
+        SITE_DOMAIN="http://coneshare.test"
+    )
+    @patch('documents.fileserver.requests.post')
+    def test_get_file_info(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.json.return_value = {'exists': True, 'size': 1024}
+        mock_post.return_value = mock_response
+
+        client = fileserver.FileServerClient()
+        info = client.get_file_info('org/test.pdf')
+
+        expected_url = 'http://core-api.test/internal/v1/file-info'
+        expected_data = {'storage_key': 'org/test.pdf'}
+        mock_post.assert_called_once_with(
+            expected_url, json=expected_data, headers=client.headers, timeout=5
+        )
+        assert info == {'exists': True, 'size': 1024}
+
 
 # Test initialization failures
 def test_client_init_raises_runtime_error_if_settings_missing():

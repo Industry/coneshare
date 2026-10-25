@@ -152,7 +152,6 @@ export const uploadDocument = async (file, path, onProgress) => {
   return api.post('/uploads/document/finalize/', {
     storage_key,
     unique_name,
-    file_size: file.size,
     content_type: file.type,
     path: path || null,
   });
@@ -177,7 +176,6 @@ export const uploadNewVersion = async (documentId, file) => {
   // Step 3: Finalize the upload
   return api.post(`/uploads/document/${documentId}/versions/finalize/`, {
     storage_key,
-    file_size: file.size,
     content_type: file.type,
   });
 };
@@ -669,7 +667,6 @@ export const uploadDataroomDocument = async (dataroomId, file, destinationFolder
   return api.post(`/datarooms/${dataroomId}/uploads/finalize/`, {
     storage_key,
     unique_name,
-    file_size: file.size,
     content_type: file.type || 'application/octet-stream',
     destination_folder_id: destinationFolderId || null,
     path: path || null,

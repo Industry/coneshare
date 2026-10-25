@@ -220,7 +220,6 @@ export function PublicUploadPage() {
         await finalizePublicUpload(slug, {
           storage_key,
           unique_name,
-          file_size: file.size,
           content_type: file.type,
           uploader_name: uploaderName,
           uploader_email: uploaderEmail,

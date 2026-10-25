@@ -70,6 +70,11 @@ class FileServerClient:
         data = {'storage_key': storage_key}
         self._post('/internal/v1/delete-file', data, expect_json=False)
 
+    def get_file_info(self, storage_key: str) -> dict:
+        """Retrieves physical file metadata (exists, size) from the file server."""
+        data = {'storage_key': storage_key}
+        return self._post('/internal/v1/file-info', data, expect_json=True)
+
     def copy_file(self, source_storage_key: str, destination_storage_key: str, file_size: int = None):
         """Requests copying of a file on the file server."""
         data = {
