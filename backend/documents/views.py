@@ -43,6 +43,8 @@ from .services import (
     touch_folder_ancestors,
     validate_storage_key,
     ensure_storage_key_not_claimed,
+    is_dataroom_vault_document,
+    enforce_dataroom_storage_quota,
 )
 
 from .renderers import get_renderer
@@ -301,6 +303,7 @@ class DocumentUploadFinalizeView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+        document.refresh_from_db()
         doc_serializer = DocumentSerializer(document, context={'request': request})
         return Response(doc_serializer.data, status=status.HTTP_202_ACCEPTED)
 
@@ -481,11 +484,16 @@ class DocumentVersionUploadRequestView(APIView):
         validated_data = serializer.validated_data
 
         try:
-            check_user_quota_on_upload(
-                user=request.user,
-                new_file_size=validated_data['file_size'],
-                document_to_update=document
-            )
+            if is_dataroom_vault_document(document):
+                old_size = document.file_size or 0
+                delta = validated_data['file_size'] - old_size
+                enforce_dataroom_storage_quota(document, delta, lock=False)
+            else:
+                check_user_quota_on_upload(
+                    user=request.user,
+                    new_file_size=validated_data['file_size'],
+                    document_to_update=document
+                )
         except QuotaExceededError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -557,11 +565,12 @@ class DocumentVersionUploadFinalizeView(APIView):
         actual_file_size = file_info['size']
 
         try:
-            check_user_quota_on_upload(
-                user=request.user,
-                new_file_size=actual_file_size,
-                document_to_update=document
-            )
+            if not is_dataroom_vault_document(document):
+                check_user_quota_on_upload(
+                    user=request.user,
+                    new_file_size=actual_file_size,
+                    document_to_update=document
+                )
         except QuotaExceededError as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -573,8 +582,9 @@ class DocumentVersionUploadFinalizeView(APIView):
                 file_size=actual_file_size,
                 content_type=validated_data['content_type'],
             )
-        except serializers.ValidationError as e:
-            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
+        except (serializers.ValidationError, QuotaExceededError) as e:
+            detail = e.detail if hasattr(e, 'detail') else str(e)
+            return Response({'detail': detail} if isinstance(detail, str) else detail, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error(f"Failed to finalize document version upload for doc {document_id}: {e}")
             return Response(
@@ -582,6 +592,7 @@ class DocumentVersionUploadFinalizeView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+        document.refresh_from_db()
         doc_serializer = DocumentSerializer(document, context={'request': request})
         return Response(doc_serializer.data, status=status.HTTP_202_ACCEPTED)
 

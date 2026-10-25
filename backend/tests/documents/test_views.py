@@ -2154,6 +2154,100 @@ def test_promote_version_endpoint_vault_document_bypasses_user_quota(mock_get_se
     assert user.total_document_size == 1024 * 1024
 
 
+@pytest.mark.django_db
+@patch('documents.views.fileserver_client.generate_upload_url')
+@patch('core.services.get_dynamic_setting')
+def test_version_upload_request_vault_document_bypasses_user_quota(mock_get_setting, mock_gen_url, api_client, user, organization):
+    """Test that requesting a version upload for a vault document succeeds even when user personal quota is full."""
+    mock_get_setting.side_effect = lambda key: 1 if key == 'FILE_SIZE_QUOTA_MB' else 100
+    mock_gen_url.return_value = "https://files.coneshare.com/upload/mock"
+
+    root_folder = Folder.objects.create(name="__root__", organization=organization, created_by=None, parent=None, folder_type=Folder.FOLDER_TYPE_ROOT)
+    vault_folder = Folder.objects.create(name="__datarooms__", organization=organization, created_by=None, parent=root_folder, folder_type=Folder.FOLDER_TYPE_VAULT)
+    room_folder = Folder.objects.create(name="Room_1", organization=organization, created_by=None, parent=vault_folder, folder_type=Folder.FOLDER_TYPE_VAULT)
+
+    doc = Document.objects.create(name="VaultDoc.pdf", organization=organization, created_by=user, folder=room_folder, status="ready", file_size=500 * 1024)
+    user.total_document_size = 1024 * 1024  # 1MB limit reached
+    user.save()
+
+    response = api_client.post(
+        f'/api/v1/uploads/document/{doc.id}/versions/request/',
+        {'file_name': 'VaultDoc_v2.pdf', 'file_size': 2 * 1024 * 1024}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert 'upload_url' in response.json()
+
+
+@pytest.mark.django_db
+@patch('documents.views.fileserver_client.get_file_info')
+@patch('documents.services._route_document_for_processing')
+@patch('core.services.get_dynamic_setting')
+def test_version_upload_finalize_vault_document_does_not_consume_user_quota(mock_get_setting, mock_route, mock_get_info, api_client, user, organization):
+    """Test that finalizing a version upload for a vault document does not update user's total_document_size."""
+    mock_get_setting.side_effect = lambda key: 1 if key == 'FILE_SIZE_QUOTA_MB' else 100
+    mock_get_info.return_value = {'exists': True, 'size': 2 * 1024 * 1024}
+
+    root_folder = Folder.objects.create(name="__root__", organization=organization, created_by=None, parent=None, folder_type=Folder.FOLDER_TYPE_ROOT)
+    vault_folder = Folder.objects.create(name="__datarooms__", organization=organization, created_by=None, parent=root_folder, folder_type=Folder.FOLDER_TYPE_VAULT)
+    room_folder = Folder.objects.create(name="Room_1", organization=organization, created_by=None, parent=vault_folder, folder_type=Folder.FOLDER_TYPE_VAULT)
+
+    doc = Document.objects.create(name="VaultDoc.pdf", organization=organization, created_by=user, folder=room_folder, status="ready", file_size=500 * 1024)
+    user.total_document_size = 1000
+    user.save()
+
+    storage_key = f"{organization.id}/vault_v2_new.pdf"
+    response = api_client.post(
+        f'/api/v1/uploads/document/{doc.id}/versions/finalize/',
+        {
+            'storage_key': storage_key,
+            'content_type': 'application/pdf',
+        }
+    )
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    user.refresh_from_db()
+    assert user.total_document_size == 1000, "User total_document_size must remain unchanged for vault uploads"
+
+
+@pytest.mark.django_db
+@patch('documents.views.fileserver_client.get_file_info')
+@patch('documents.services._route_document_for_processing')
+@patch('core.services.get_dynamic_setting')
+def test_version_upload_finalize_vault_document_quota_exceeded_returns_400(mock_get_setting, mock_route, mock_get_info, api_client, user, organization):
+    """Test that finalizing a version upload for a vault document exceeding Dataroom quota returns 400 Bad Request (not 500)."""
+    from datarooms.models import Dataroom, DataroomDocument
+
+    mock_get_setting.side_effect = lambda key: 100
+    # 2MB version exceeds 1MB Dataroom quota
+    mock_get_info.return_value = {'exists': True, 'size': 2 * 1024 * 1024}
+
+    room = Dataroom.objects.create(
+        name="Small Room",
+        organization=organization,
+        created_by=user,
+        storage_quota_mb=1,
+        storage_version=2,
+    )
+
+    root_folder = Folder.objects.create(name="__root__", organization=organization, created_by=None, parent=None, folder_type=Folder.FOLDER_TYPE_ROOT)
+    vault_folder = Folder.objects.create(name="__datarooms__", organization=organization, created_by=None, parent=root_folder, folder_type=Folder.FOLDER_TYPE_VAULT)
+    room_folder = Folder.objects.create(name="Small_Room", organization=organization, created_by=None, parent=vault_folder, folder_type=Folder.FOLDER_TYPE_VAULT)
+
+    doc = Document.objects.create(name="VaultDoc.pdf", organization=organization, created_by=user, folder=room_folder, status="ready", file_size=500 * 1024)
+    DataroomDocument.objects.create(dataroom=room, document=doc, name="VaultDoc.pdf")
+
+    storage_key = f"{organization.id}/vault_v2_oversize.pdf"
+    response = api_client.post(
+        f'/api/v1/uploads/document/{doc.id}/versions/finalize/',
+        {
+            'storage_key': storage_key,
+            'content_type': 'application/pdf',
+        }
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "exceed the Dataroom storage limit" in response.json()['detail']
+
+
+
 def test_preview_data_endpoint_document_uploading_state(api_client, user, organization):
     """Test retrieving preview data when document is in uploading state."""
     doc = Document.objects.create(
@@ -2748,6 +2842,7 @@ class TestDocumentUploadConstraints:
             'content_type': 'application/pdf',
         }, format='json')
         assert res_fin_ok.status_code == status.HTTP_202_ACCEPTED
+        assert res_fin_ok.data['file_size'] == 4096
         doc.refresh_from_db()
         new_version = doc.versions.get(version_number=2)
         assert new_version.file_size == 4096

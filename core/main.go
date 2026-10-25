@@ -430,10 +430,19 @@ func handleDownload(config Config, disposition string) http.HandlerFunc {
 		subpath := chi.URLParam(r, "*")
 		var filePath string
 		if subpath != "" {
-			dir := filepath.Dir(info.StorageKey)
+			// Subpath access is only permitted for HLS playlists located in dedicated *_hls directories.
+			// The playlist.m3u8 convention is enforced by generate_video_stream_task in tasks.py.
+			parentDir := filepath.Base(filepath.Dir(cleanKey))
+			fileName := filepath.Base(cleanKey)
+			if fileName != "playlist.m3u8" || !strings.HasSuffix(parentDir, "_hls") {
+				http.Error(w, "Forbidden: subpath access not permitted for this token", http.StatusForbidden)
+				return
+			}
+
+			dir := filepath.Dir(cleanKey)
 			filePath = filepath.Join(config.StoragePath, dir, subpath)
 		} else {
-			filePath = filepath.Join(config.StoragePath, info.StorageKey)
+			filePath = filepath.Join(config.StoragePath, cleanKey)
 		}
 
 		// Security check 1: prevent path traversal outside of the storage root.
