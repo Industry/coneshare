@@ -315,5 +315,111 @@ func TestHandleUploadAtomicRenameAndCleanup(t *testing.T) {
 	}
 }
 
+func TestHandleDownloadSubpathAccessRestrictions(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "coneshare-test-subpath")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	config := Config{
+		StoragePath: tempDir,
+	}
+
+	// 1. Create a regular single file and an adjacent file in the same directory bucket
+	regularKey := "org123/a1/regular-doc.pdf"
+	adjacentKey := "org123/a1/other-doc.pdf"
+
+	regularPath := filepath.Join(tempDir, regularKey)
+	adjacentPath := filepath.Join(tempDir, adjacentKey)
+
+	if err := os.MkdirAll(filepath.Dir(regularPath), 0755); err != nil {
+		t.Fatalf("failed to create directory: %v", err)
+	}
+	if err := os.WriteFile(regularPath, []byte("regular document content"), 0644); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+	if err := os.WriteFile(adjacentPath, []byte("adjacent document content"), 0644); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
+
+	// 2. Create an HLS playlist and segment in a dedicated *_hls directory
+	hlsPlaylistKey := "org123/a1/video_hls/playlist.m3u8"
+	hlsSegmentKey := "org123/a1/video_hls/segment0.ts"
+
+	hlsPlaylistPath := filepath.Join(tempDir, hlsPlaylistKey)
+	hlsSegmentPath := filepath.Join(tempDir, hlsSegmentKey)
+
+	if err := os.MkdirAll(filepath.Dir(hlsPlaylistPath), 0755); err != nil {
+		t.Fatalf("failed to create hls directory: %v", err)
+	}
+	if err := os.WriteFile(hlsPlaylistPath, []byte("#EXTM3U\nsegment0.ts"), 0644); err != nil {
+		t.Fatalf("failed to write hls playlist: %v", err)
+	}
+	if err := os.WriteFile(hlsSegmentPath, []byte("hls segment 0 binary data"), 0644); err != nil {
+		t.Fatalf("failed to write hls segment: %v", err)
+	}
+
+	// 3. Register tokens
+	regularToken := "token-regular-file"
+	hlsToken := "token-hls-video"
+
+	storeLock.Lock()
+	tokenStore[regularToken] = TokenInfo{
+		StorageKey: regularKey,
+		ExpiresAt:  time.Now().Add(1 * time.Hour),
+	}
+	tokenStore[hlsToken] = TokenInfo{
+		StorageKey: hlsPlaylistKey,
+		ExpiresAt:  time.Now().Add(1 * time.Hour),
+	}
+	storeLock.Unlock()
+
+	r := chi.NewRouter()
+	r.Get("/files/preview/{token}", handleDownload(config, "inline"))
+	r.Get("/files/preview/{token}/*", handleDownload(config, "inline"))
+
+	// Case A: Regular single-file token without subpath -> 200 OK
+	reqA := httptest.NewRequest("GET", "/files/preview/"+regularToken, nil)
+	wA := httptest.NewRecorder()
+	r.ServeHTTP(wA, reqA)
+	if wA.Code != http.StatusOK {
+		t.Errorf("regular token without subpath: expected 200 OK, got %d", wA.Code)
+	}
+
+	// Case B: Regular single-file token with subpath to adjacent file in bucket -> 403 Forbidden
+	reqB := httptest.NewRequest("GET", "/files/preview/"+regularToken+"/other-doc.pdf", nil)
+	wB := httptest.NewRecorder()
+	r.ServeHTTP(wB, reqB)
+	if wB.Code != http.StatusForbidden {
+		t.Errorf("regular token with subpath to adjacent file: expected 403 Forbidden, got %d", wB.Code)
+	}
+
+	// Case C: HLS playlist token without subpath -> 200 OK
+	reqC := httptest.NewRequest("GET", "/files/preview/"+hlsToken, nil)
+	wC := httptest.NewRecorder()
+	r.ServeHTTP(wC, reqC)
+	if wC.Code != http.StatusOK {
+		t.Errorf("hls token without subpath: expected 200 OK, got %d", wC.Code)
+	}
+
+	// Case D: HLS playlist token with valid segment subpath -> 200 OK
+	reqD := httptest.NewRequest("GET", "/files/preview/"+hlsToken+"/segment0.ts", nil)
+	wD := httptest.NewRecorder()
+	r.ServeHTTP(wD, reqD)
+	if wD.Code != http.StatusOK {
+		t.Errorf("hls token with segment subpath: expected 200 OK, got %d", wD.Code)
+	}
+
+	// Case E: HLS playlist token with subpath traversal escaping hls directory -> 403 Forbidden
+	reqE := httptest.NewRequest("GET", "/files/preview/"+hlsToken+"/../other-doc.pdf", nil)
+	wE := httptest.NewRecorder()
+	r.ServeHTTP(wE, reqE)
+	if wE.Code != http.StatusForbidden {
+		t.Errorf("hls token with traversal subpath: expected 403 Forbidden, got %d", wE.Code)
+	}
+}
+
+
 
 

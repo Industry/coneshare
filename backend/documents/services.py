@@ -104,6 +104,56 @@ def is_dataroom_vault_document(document: Document) -> bool:
     return bool(folder and folder.folder_type == Folder.FOLDER_TYPE_VAULT)
 
 
+def enforce_dataroom_storage_quota(
+    document: Document,
+    delta_bytes: int,
+    lock: bool = True,
+    action_verb: str = "Uploading"
+):
+    """
+    Verifies that increasing the document's file size by delta_bytes does not exceed
+    the storage quota of any active Dataroom containing this document.
+    When delta_bytes <= 0, storage usage does not increase, so the check returns early.
+    Raises QuotaExceededError if any Dataroom limit is exceeded.
+    """
+    if delta_bytes <= 0:
+        return
+
+    # Inline imports required to avoid circular dependency loop:
+    # datarooms.services imports documents.services at module level.
+    from datarooms.models import Dataroom, DataroomDocument
+    from datarooms.services import get_dataroom_storage_used_bytes
+
+    dataroom_ids = list(
+        DataroomDocument.objects.filter(document=document)
+        .values_list('dataroom_id', flat=True)
+        .distinct()
+    )
+    if not dataroom_ids:
+        return
+
+    if lock:
+        # Lock affected datarooms in stable ID order to serialize quota checks and prevent deadlocks
+        rooms_qs = list(
+            Dataroom.objects.select_for_update()
+            .filter(id__in=dataroom_ids)
+            .order_by('id')
+        )
+    else:
+        rooms_qs = list(
+            Dataroom.objects.filter(id__in=dataroom_ids).order_by('id')
+        )
+
+    for droom in rooms_qs:
+        if droom.storage_quota_mb and droom.storage_quota_mb > 0:
+            room_quota_bytes = droom.storage_quota_mb * 1024 * 1024
+            current_usage = get_dataroom_storage_used_bytes(droom)
+            if current_usage + delta_bytes > room_quota_bytes:
+                raise QuotaExceededError(
+                    f"{action_verb} this version would exceed the Dataroom storage limit of {droom.storage_quota_mb} MB."
+                )
+
+
 def recalculate_user_document_size(user: User) -> int:
     """
     Computes and updates the true total_document_size for a user from their active documents.
@@ -646,24 +696,33 @@ def create_new_document_version(
     """
     ensure_storage_key_not_claimed(storage_key, document.organization_id)
 
-    # 1. Find the current version number
-    latest_version = document.versions.order_by('-version_number').first()
-    new_version_number = (latest_version.version_number if latest_version else 0) + 1
-
     content_type = normalize_content_type(content_type, document.name)
     doc_type = _get_doc_type_from_content_type(content_type, document.name)
 
     with transaction.atomic():
-        # 1. Update user's total document size
-        old_file_size = document.file_size or 0
-        User.objects.filter(pk=requesting_user.pk).update(total_document_size=F('total_document_size') - old_file_size + file_size)
+        locked_doc = Document.objects.select_for_update().get(pk=document.pk)
+        old_file_size = locked_doc.file_size or 0
+        is_vault_doc = is_dataroom_vault_document(locked_doc)
+
+        # Compute next version number under row lock to prevent concurrent version number conflicts
+        latest_version = locked_doc.versions.order_by('-version_number').first()
+        new_version_number = (latest_version.version_number if latest_version else 0) + 1
+
+        if is_vault_doc:
+            enforce_dataroom_storage_quota(locked_doc, file_size - old_file_size, lock=True)
+
+        # Update user's total document size for personal documents (vault documents are tracked under datarooms)
+        if not is_vault_doc and requesting_user and old_file_size != file_size:
+            User.objects.filter(pk=requesting_user.pk).update(
+                total_document_size=F('total_document_size') - old_file_size + file_size
+            )
 
         # 2. Clear the current primary. After a promote, this may not be the latest version.
-        document.versions.filter(is_primary=True).update(is_primary=False)
+        locked_doc.versions.filter(is_primary=True).update(is_primary=False)
 
         # 3. Create the new version record
         new_version = DocumentVersion.objects.create(
-            document=document,
+            document=locked_doc,
             version_number=new_version_number,
             original_storage_key=storage_key,
             storage_key=storage_key,
@@ -675,11 +734,15 @@ def create_new_document_version(
 
         # 4. Route for processing
         _route_document_for_processing(
-            document=document,
+            document=locked_doc,
             version=new_version,
             file_size=file_size,
             content_type=content_type,
         )
+
+        # Refresh caller's document instance after the locked update so callers have up-to-date attributes
+        if document and getattr(document, 'pk', None) == locked_doc.pk:
+            document.refresh_from_db()
 
     return new_version
 
@@ -796,31 +859,13 @@ def promote_document_version(document: Document, version: DocumentVersion, reque
                 new_file_size=new_file_size,
                 document_to_update=locked_doc
             )
-        elif is_vault_doc and new_file_size > old_file_size:
-            from datarooms.models import Dataroom, DataroomDocument
-            from datarooms.services import get_dataroom_storage_used_bytes
-
-            delta = new_file_size - old_file_size
-            dataroom_ids = list(
-                DataroomDocument.objects.filter(document=locked_doc)
-                .values_list('dataroom_id', flat=True)
-                .distinct()
+        elif is_vault_doc:
+            enforce_dataroom_storage_quota(
+                locked_doc,
+                new_file_size - old_file_size,
+                lock=True,
+                action_verb="Promoting"
             )
-            if dataroom_ids:
-                # Lock affected datarooms in stable ID order to serialize quota checks and prevent deadlocks
-                locked_datarooms = list(
-                    Dataroom.objects.select_for_update()
-                    .filter(id__in=dataroom_ids)
-                    .order_by('id')
-                )
-                for droom in locked_datarooms:
-                    if droom.storage_quota_mb and droom.storage_quota_mb > 0:
-                        room_quota_bytes = droom.storage_quota_mb * 1024 * 1024
-                        current_usage = get_dataroom_storage_used_bytes(droom)
-                        if current_usage + delta > room_quota_bytes:
-                            raise QuotaExceededError(
-                                f"Promoting this version would exceed the Dataroom storage limit of {droom.storage_quota_mb} MB."
-                            )
 
 
 

@@ -573,6 +573,231 @@ class TestCreateNewDocumentVersion:
             assert not version.is_primary
         mock_route.assert_called_once()
 
+    def test_create_new_document_version_refreshes_caller_document_instance(self, user):
+        """create_new_document_version must refresh the caller's document instance in-place."""
+        doc = Document.objects.create(
+            name="initial_doc.txt",
+            organization=user.organization,
+            created_by=user,
+            file_size=1024,
+            content_type="text/plain",
+            type="txt",
+        )
+        DocumentVersion.objects.create(
+            document=doc,
+            version_number=1,
+            is_primary=True,
+            file_size=1024,
+            content_type="text/plain",
+            storage_key="initial.txt",
+            original_storage_key="initial.txt",
+            type="txt",
+        )
+
+        new_version = create_new_document_version(
+            document=doc,
+            requesting_user=user,
+            storage_key=f"{user.organization.id}/new_version.pdf",
+            file_size=8192,
+            content_type="application/pdf",
+        )
+
+        assert new_version.version_number == 2
+        # doc instance passed in must have refreshed attributes from DB
+        assert doc.file_size == 8192
+        assert doc.type == "pdf"
+        assert doc.content_type == "application/pdf"
+
+    @patch('documents.services._route_document_for_processing')
+    def test_create_new_document_version_in_vault_does_not_consume_user_quota(self, mock_route, user):
+        """Creating a new version for a vault document must not modify user's personal total_document_size."""
+        root_folder = Folder.objects.create(
+            name="__root__",
+            organization=user.organization,
+            created_by=None,
+            parent=None,
+            folder_type=Folder.FOLDER_TYPE_ROOT,
+        )
+        vault_folder = Folder.objects.create(
+            name="__datarooms__",
+            organization=user.organization,
+            created_by=None,
+            parent=root_folder,
+            folder_type=Folder.FOLDER_TYPE_VAULT,
+        )
+        room_folder = Folder.objects.create(
+            name="Room_1",
+            organization=user.organization,
+            created_by=None,
+            parent=vault_folder,
+            folder_type=Folder.FOLDER_TYPE_VAULT,
+        )
+
+        doc = Document.objects.create(
+            organization=user.organization,
+            created_by=user,
+            folder=room_folder,
+            name="vault_doc.pdf",
+            type="pdf",
+            content_type="application/pdf",
+            file_size=100,
+            status="ready",
+        )
+        assert is_dataroom_vault_document(doc) is True
+
+        user.total_document_size = 1000
+        user.save()
+
+        new_version = create_new_document_version(
+            document=doc,
+            requesting_user=user,
+            storage_key="vault_v2.pdf",
+            file_size=500,
+            content_type="application/pdf",
+        )
+
+        user.refresh_from_db()
+        assert user.total_document_size == 1000, "User personal quota must not be modified for vault document versions"
+        assert new_version.version_number == 1
+
+    @patch('documents.services._route_document_for_processing')
+    def test_create_new_document_version_in_vault_enforces_dataroom_storage_quota(self, mock_route, user):
+        """Creating a new version for a vault document must enforce Dataroom storage quota."""
+        from datarooms.models import Dataroom, DataroomDocument
+
+        room = Dataroom.objects.create(
+            name="Deal Room",
+            organization=user.organization,
+            created_by=user,
+            storage_quota_mb=1,  # 1 MB quota limit
+            storage_version=2,
+        )
+        root_folder = Folder.objects.create(
+            name="__root__",
+            organization=user.organization,
+            created_by=None,
+            parent=None,
+            folder_type=Folder.FOLDER_TYPE_ROOT,
+        )
+        vault_folder = Folder.objects.create(
+            name="__datarooms__",
+            organization=user.organization,
+            created_by=None,
+            parent=root_folder,
+            folder_type=Folder.FOLDER_TYPE_VAULT,
+        )
+        room_folder = Folder.objects.create(
+            name="Deal_Room",
+            organization=user.organization,
+            created_by=None,
+            parent=vault_folder,
+            folder_type=Folder.FOLDER_TYPE_VAULT,
+        )
+
+        doc = Document.objects.create(
+            organization=user.organization,
+            created_by=user,
+            folder=room_folder,
+            name="vault_doc.pdf",
+            type="pdf",
+            content_type="application/pdf",
+            file_size=500 * 1024,
+            status="ready",
+        )
+        DataroomDocument.objects.create(dataroom=room, document=doc, name="vault_doc.pdf")
+
+        # Upload a 2MB version, which exceeds 1MB Dataroom limit
+        with pytest.raises(QuotaExceededError, match="exceed the Dataroom storage limit"):
+            create_new_document_version(
+                document=doc,
+                requesting_user=user,
+                storage_key="vault_v2_large.pdf",
+                file_size=2 * 1024 * 1024,
+                content_type="application/pdf",
+            )
+
+    @patch('documents.services._route_document_for_processing')
+    def test_create_new_document_version_in_vault_locks_datarooms_in_stable_order(self, mock_route, user):
+        """Creating a new version in a vault document must lock affected Datarooms with select_for_update in stable ID order."""
+        from datarooms.models import Dataroom, DataroomDocument
+
+        room1 = Dataroom.objects.create(
+            name="Room 1",
+            organization=user.organization,
+            created_by=user,
+            storage_quota_mb=10,
+            storage_version=2,
+        )
+        room2 = Dataroom.objects.create(
+            name="Room 2",
+            organization=user.organization,
+            created_by=user,
+            storage_quota_mb=10,
+            storage_version=2,
+        )
+
+        root_folder = Folder.objects.create(
+            name="__root__",
+            organization=user.organization,
+            created_by=None,
+            parent=None,
+            folder_type=Folder.FOLDER_TYPE_ROOT,
+        )
+        vault_folder = Folder.objects.create(
+            name="__datarooms__",
+            organization=user.organization,
+            created_by=None,
+            parent=root_folder,
+            folder_type=Folder.FOLDER_TYPE_VAULT,
+        )
+        room_folder = Folder.objects.create(
+            name="Room_1",
+            organization=user.organization,
+            created_by=None,
+            parent=vault_folder,
+            folder_type=Folder.FOLDER_TYPE_VAULT,
+        )
+
+        doc = Document.objects.create(
+            organization=user.organization,
+            created_by=user,
+            folder=room_folder,
+            name="vault_doc.pdf",
+            type="pdf",
+            content_type="application/pdf",
+            file_size=100,
+            status="ready",
+        )
+        DataroomDocument.objects.create(dataroom=room1, document=doc, name="vault_doc.pdf")
+        DataroomDocument.objects.create(dataroom=room2, document=doc, name="vault_doc.pdf")
+
+        original_select_for_update = Dataroom.objects.select_for_update
+        locked_datarooms_fetched = []
+
+        def spy_select_for_update(*args, **kwargs):
+            qs = original_select_for_update(*args, **kwargs)
+            original_filter = qs.filter
+            def spy_filter(*f_args, **f_kwargs):
+                sub_qs = original_filter(*f_args, **f_kwargs)
+                original_order_by = sub_qs.order_by
+                def spy_order_by(*o_args, **o_kwargs):
+                    ordered_qs = original_order_by(*o_args, **o_kwargs)
+                    locked_datarooms_fetched.append((list(o_args), list(ordered_qs)))
+                    return ordered_qs
+                sub_qs.order_by = spy_order_by
+                return sub_qs
+            qs.filter = spy_filter
+            return qs
+
+        with patch.object(Dataroom.objects, 'select_for_update', side_effect=spy_select_for_update) as mock_sfu:
+            create_new_document_version(doc, user, "vault_v2.pdf", 200, "application/pdf")
+            assert mock_sfu.called, "Dataroom.objects.select_for_update must be called to serialize quota checks"
+            assert len(locked_datarooms_fetched) == 1
+            order_by_args, locked_rooms = locked_datarooms_fetched[0]
+            assert order_by_args == ['id'], "Datarooms must be ordered by 'id' to prevent deadlocks"
+            assert [r.id for r in locked_rooms] == sorted([room1.id, room2.id])
+
+
 
 @pytest.mark.django_db
 class TestPromoteDocumentVersion:
