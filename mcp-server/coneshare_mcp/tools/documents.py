@@ -72,7 +72,6 @@ def register_document_tools(mcp: FastMCP) -> None:
     async def finalize_document_upload(
         ctx: Context,
         storage_key: str = Field(description="Storage key returned from request_document_upload"),
-        file_size: int = Field(gt=0, description="Size of the uploaded file in bytes"),
         unique_name: Optional[str] = Field(default=None, description="Unique name returned from request_document_upload"),
         file_name: Optional[str] = Field(default=None, description="Original file name (fallback for unique_name)"),
         content_type: str = Field(default="application/octet-stream", description="MIME type of the file"),
@@ -89,7 +88,6 @@ def register_document_tools(mcp: FastMCP) -> None:
         return await client.finalize_document_upload(
             storage_key=storage_key,
             unique_name=target_unique_name,
-            file_size=file_size,
             content_type=content_type,
             path=path,
         )

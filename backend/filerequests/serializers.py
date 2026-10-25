@@ -291,7 +291,6 @@ class FileRequestUploadFinalizeSerializer(serializers.Serializer):
     """
     storage_key = serializers.CharField()
     unique_name = serializers.CharField()
-    file_size = serializers.IntegerField()
     content_type = serializers.CharField(allow_blank=True)
     uploader_name = serializers.CharField(required=True, allow_blank=False, max_length=255)
     uploader_email = serializers.EmailField(required=True, allow_blank=False)

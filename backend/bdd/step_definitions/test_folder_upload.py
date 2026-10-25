@@ -67,7 +67,8 @@ def upload_files_in_batch(user_context, datatable):
         path_mappings = {}
 
     # Step 3: Concurrently upload all files, respecting any path remappings
-    with patch('documents.fileserver.fileserver_client.generate_upload_url') as mock_upload_url:
+    with patch('documents.fileserver.fileserver_client.generate_upload_url') as mock_upload_url, \
+         patch('documents.fileserver.fileserver_client.get_file_info', return_value={'exists': True, 'size': len(file_content)}):
         mock_upload_url.return_value = "http://fileserver/files/upload/some-token"
 
         for file_info in files_to_upload:
@@ -97,7 +98,6 @@ def upload_files_in_batch(user_context, datatable):
             finalize_data = {
                 'storage_key': upload_data['storage_key'],
                 'unique_name': upload_data['unique_name'],
-                'file_size': len(file_content),
                 'content_type': 'application/octet-stream',
                 'path': upload_path,
             }

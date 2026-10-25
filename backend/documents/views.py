@@ -133,7 +133,7 @@ class DocumentUploadRequestView(APIView):
 
     class DocumentUploadRequestSerializer(serializers.Serializer):
         file_name = serializers.CharField()
-        file_size = serializers.IntegerField()
+        file_size = serializers.IntegerField(min_value=1)
         # Upload path contract: `path` is root-relative (no leading slash),
         # e.g. "foo.txt" or "folder/sub/file.pdf".
         path = serializers.CharField(required=False, allow_blank=True, allow_null=True)
@@ -218,7 +218,6 @@ class DocumentUploadFinalizeView(APIView):
     class DocumentUploadFinalizeSerializer(serializers.Serializer):
         storage_key = serializers.CharField()
         unique_name = serializers.CharField()
-        file_size = serializers.IntegerField()
         content_type = serializers.CharField(allow_blank=True)
         # Must follow the same root-relative contract used in request step.
         path = serializers.CharField(required=False, allow_blank=True, allow_null=True)
@@ -240,7 +239,6 @@ class DocumentUploadFinalizeView(APIView):
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
-
         parent_folder = None
         relative_path = validated_data.get('path')
         root_folder = Folder.objects.get_root_for_org(request.user.organization)
@@ -260,12 +258,34 @@ class DocumentUploadFinalizeView(APIView):
             parent_folder = root_folder
 
         try:
+            file_info = fileserver_client.get_file_info(validated_data['storage_key'])
+        except APIException as e:
+            logger.error(f"Failed to check file info for key {validated_data['storage_key']}: {e}")
+            return Response(
+                {"detail": "Failed to verify file on storage server."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        if not file_info or not file_info.get('exists') or file_info.get('size', 0) <= 0:
+            return Response(
+                {"detail": "Uploaded file not found on storage server."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        actual_file_size = file_info['size']
+
+        try:
+            check_user_quota_on_upload(request.user, actual_file_size)
+        except QuotaExceededError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
             document = create_document_from_upload(
                 requesting_user=request.user,
                 folder=parent_folder,
                 storage_key=validated_data['storage_key'],
                 unique_name=validated_data['unique_name'],
-                file_size=validated_data['file_size'],
+                file_size=actual_file_size,
                 content_type=validated_data['content_type'],
             )
         except Exception as e:
@@ -434,7 +454,7 @@ class DocumentVersionUploadRequestView(APIView):
 
     class DocumentVersionUploadRequestSerializer(serializers.Serializer):
         file_name = serializers.CharField()
-        file_size = serializers.IntegerField()
+        file_size = serializers.IntegerField(min_value=1)
 
     class DocumentVersionUploadResponseSerializer(serializers.Serializer):
         upload_url = serializers.CharField()
@@ -487,7 +507,6 @@ class DocumentVersionUploadFinalizeView(APIView):
 
     class FinalizeSerializer(serializers.Serializer):
         storage_key = serializers.CharField()
-        file_size = serializers.IntegerField()
         content_type = serializers.CharField(allow_blank=True)
 
     @extend_schema(
@@ -512,12 +531,37 @@ class DocumentVersionUploadFinalizeView(APIView):
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            create_new_document_version(
+            file_info = fileserver_client.get_file_info(validated_data['storage_key'])
+        except APIException as e:
+            logger.error(f"Failed to check file info for key {validated_data['storage_key']}: {e}")
+            return Response(
+                {"detail": "Failed to verify file on storage server."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
 
+        if not file_info or not file_info.get('exists') or file_info.get('size', 0) <= 0:
+            return Response(
+                {"detail": "Uploaded file not found on storage server."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        actual_file_size = file_info['size']
+
+        try:
+            check_user_quota_on_upload(
+                user=request.user,
+                new_file_size=actual_file_size,
+                document_to_update=document
+            )
+        except QuotaExceededError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            create_new_document_version(
                 document=document,
                 requesting_user=request.user,
                 storage_key=validated_data['storage_key'],
-                file_size=validated_data['file_size'],
+                file_size=actual_file_size,
                 content_type=validated_data['content_type'],
             )
         except Exception as e:
@@ -868,11 +912,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         if serializer.instance.created_by != self.request.user and getattr(self.request.user, 'role', '') != 'admin':
             raise PermissionDenied("You do not have permission to modify this document.")
-        old_folder = serializer.instance.folder
         document = serializer.save()
         touch_folder_ancestors(document.folder)
-        if old_folder and old_folder != document.folder:
-            touch_folder_ancestors(old_folder)
 
     def list(self, request, *args, **kwargs):
         """

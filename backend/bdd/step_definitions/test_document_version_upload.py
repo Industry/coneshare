@@ -47,6 +47,7 @@ def upload_new_version(user_context, document, filename):
     # We patch the client methods at their source and requests/convert in the tasks module.
     with patch('documents.fileserver.fileserver_client.generate_upload_url') as mock_upload_url, \
          patch('documents.fileserver.fileserver_client.generate_download_url') as mock_download_url, \
+         patch('documents.fileserver.fileserver_client.get_file_info', return_value={'exists': True, 'size': len(file_content)}), \
          patch('documents.tasks.requests.get') as mock_task_get, \
          patch('documents.tasks.requests.put') as mock_task_put, \
          patch('documents.tasks.pdfinfo_from_bytes') as mock_pdfinfo, \
@@ -82,7 +83,6 @@ def upload_new_version(user_context, document, filename):
         finalize_url = f'/api/v1/uploads/document/{document.id}/versions/finalize/'
         finalize_data = {
             'storage_key': upload_data['storage_key'],
-            'file_size': len(file_content),
             'content_type': 'application/pdf',
         }
         finalize_response = api_client.post(finalize_url, finalize_data)

@@ -18,6 +18,30 @@ from sharelinks.models import DataroomVisit, ShareLink, ViewSession
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def mock_dataroom_fileserver_get_info():
+    with patch('datarooms.views.fileserver_client.get_file_info') as mock_info:
+        def side_effect(storage_key):
+            if 'overflow.pdf' in storage_key:
+                return {'exists': True, 'size': 5 * 1024 * 1024}
+            if 'big_deal_deck.pdf' in storage_key:
+                return {'exists': True, 'size': 50 * 1024 * 1024}
+            if 'sub_doc.pdf' in storage_key:
+                return {'exists': True, 'size': 1 * 1024 * 1024}
+            if 'doc.pdf' in storage_key:
+                return {'exists': True, 'size': 2 * 1024 * 1024}
+            if 'test_file.pdf' in storage_key:
+                return {'exists': True, 'size': 331697}
+            if 'orphan_file.pdf' in storage_key:
+                return {'exists': True, 'size': 2048}
+            if 'temp.txt' in storage_key:
+                return {'exists': True, 'size': 12}
+            return {'exists': True, 'size': 1024}
+
+        mock_info.side_effect = side_effect
+        yield mock_info
+
+
 class TestDataroomViewSet:
     def test_list_datarooms_scoped_to_user(self, api_client, user, user2, organization):
         """

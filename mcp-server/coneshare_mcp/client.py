@@ -198,14 +198,12 @@ class ConeshareClient:
         self,
         storage_key: str,
         unique_name: str,
-        file_size: int,
         content_type: str = "application/octet-stream",
         path: Optional[str] = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "storage_key": storage_key,
             "unique_name": unique_name,
-            "file_size": file_size,
             "content_type": content_type,
         }
         normalized_path = self._normalize_upload_path(path, unique_name)

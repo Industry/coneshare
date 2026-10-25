@@ -146,6 +146,12 @@ class TestFileRequestViewSet:
 
 
 class TestPublicFileRequestViews:
+    @pytest.fixture(autouse=True)
+    def mock_fileserver_get_info(self):
+        with patch('filerequests.views.fileserver_client.get_file_info') as mock_info:
+            mock_info.return_value = {'exists': True, 'size': 54321}
+            yield mock_info
+
     def test_get_public_details_success(self, public_client, file_request):
         """Test retrieving public details of an active file request."""
         file_request.name = "Public Name"
@@ -355,7 +361,7 @@ class TestPublicFileRequestViews:
             f"{org_id}/../secret.txt",
             f"{org_id}/%2e%2e/secret.txt",
             f"{org_id}/%252e%252e/secret.txt",
-            'other_org/ab/malicious.pdf',
+            'other_org/ab/external.pdf',
             'no_prefix_key.pdf',
         ]
 
@@ -365,8 +371,8 @@ class TestPublicFileRequestViews:
                 'unique_name': 'test.pdf',
                 'file_size': 1234,
                 'content_type': 'application/pdf',
-                'uploader_name': 'Attacker',
-                'uploader_email': 'attacker@example.com',
+                'uploader_name': 'External User',
+                'uploader_email': 'user@example.com',
             }
             response = public_client.post(url, data)
             assert response.status_code == status.HTTP_400_BAD_REQUEST, f"Key {key} should have been rejected with 400, got {response.status_code}"
@@ -791,4 +797,82 @@ class TestPublicFileRequestViews:
         assert threat.storage_cleanup_status == SecurityThreatEvent.StorageCleanupStatus.FAILED
         assert 'delete failed' in threat.storage_cleanup_error
         mock_dispatch_automation.assert_called_once()
+
+
+@pytest.mark.django_db
+class TestFileRequestUploadConstraints:
+    """FileRequest upload request and finalize file size validation tests."""
+
+    def test_request_upload_rejects_negative_and_zero_file_size(self, public_client, file_request):
+        url = f'/api/v1/public/file-requests/{file_request.slug}/request-upload/'
+        # Negative
+        res_neg = public_client.post(url, {
+            'file_name': 'test.pdf',
+            'file_size': -100,
+        }, format='json')
+        assert res_neg.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'file_size' in res_neg.data
+
+        # Zero
+        res_zero = public_client.post(url, {
+            'file_name': 'test.pdf',
+            'file_size': 0,
+        }, format='json')
+        assert res_zero.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'file_size' in res_zero.data
+
+    @patch('filerequests.views.scan_storage_key_or_raise')
+    @patch('filerequests.views.fileserver_client.get_file_info')
+    def test_finalize_upload_verifies_storage_file_size_and_ignores_client_value(self, mock_get_info, _mock_scan, public_client, file_request):
+        url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
+        storage_key = f"{file_request.created_by.organization.id}/test-key.pdf"
+
+        # Missing or zero size on storage server
+        mock_get_info.return_value = {'exists': False, 'size': 0}
+        res_missing = public_client.post(url, {
+            'storage_key': storage_key,
+            'unique_name': 'test.pdf',
+            'content_type': 'application/pdf',
+            'uploader_name': 'Alice',
+            'uploader_email': 'alice@example.com',
+        }, format='json')
+        assert res_missing.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'Uploaded file not found' in res_missing.data['detail']
+
+        # Physical file exists with size 2048, client supplies custom 10
+        mock_get_info.return_value = {'exists': True, 'size': 2048}
+        res_ok = public_client.post(url, {
+            'storage_key': storage_key,
+            'unique_name': 'test.pdf',
+            'file_size': 10,  # client-provided value is ignored in favor of physical file size
+            'content_type': 'application/pdf',
+            'uploader_name': 'Alice',
+            'uploader_email': 'alice@example.com',
+        }, format='json')
+        assert res_ok.status_code == status.HTTP_202_ACCEPTED
+        created_doc = Document.objects.get(name='test.pdf')
+        assert created_doc.file_size == 2048
+
+    @patch('filerequests.views.fileserver_client.get_file_info')
+    @patch('filerequests.views.scan_storage_key_or_raise')
+    def test_finalize_upload_enforces_max_file_size_and_owner_quota(self, _mock_scan, mock_get_info, public_client, file_request):
+        file_request.max_file_size = 1000  # 1000 bytes max
+        file_request.save(update_fields=['max_file_size'])
+
+        url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
+        storage_key = f"{file_request.created_by.organization.id}/exceed-key.pdf"
+
+        # Finalize when physical file size > max_file_size
+        mock_get_info.return_value = {'exists': True, 'size': 5000}
+        res_exceed = public_client.post(url, {
+            'storage_key': storage_key,
+            'unique_name': 'test.pdf',
+            'file_size': 500,  # client-provided size is ignored; server uses physical file size
+            'content_type': 'application/pdf',
+            'uploader_name': 'Alice',
+            'uploader_email': 'alice@example.com',
+        }, format='json')
+        assert res_exceed.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'File size exceeds' in res_exceed.data['detail']
+
 

@@ -195,32 +195,6 @@ class DocumentVersionListSerializer(serializers.ModelSerializer):
         return None
 
 
-class NestedFolderField(serializers.PrimaryKeyRelatedField):
-    """
-    A custom field that uses a primary key for writes but serializes
-    the full related object for reads.
-    """
-    def to_representation(self, value):
-        # When a related field is not prefetched, 'value' may be a lazy
-        # proxy object. We must fetch the full instance to serialize it.
-        instance = self.get_queryset().get(pk=value.pk)
-        return FolderSerializer(instance, context=self.context).data
-
-
-class RootFolderDefault:
-    """
-    A default class that can be used to set the root folder for a user.
-    """
-    requires_context = True
-
-    def __call__(self, serializer_field):
-        request = serializer_field.context['request']
-        return Folder.objects.get_root_for_org(request.user.organization)
-
-    def __repr__(self):
-        return '%s()' % self.__class__.__name__
-
-
 class DocumentSerializer(serializers.ModelSerializer):
     versions = DocumentVersionSerializer(many=True, read_only=True)
     share_links = serializers.SerializerMethodField()
@@ -228,18 +202,7 @@ class DocumentSerializer(serializers.ModelSerializer):
     share_link_view_count = serializers.SerializerMethodField()
     cloud_import = serializers.SerializerMethodField()
     download_only = serializers.BooleanField(source='is_download_only', read_only=True)
-    # parent folder this document belongs to.
-    # TODO: we may need to explict pass parent folder to this serialier for performance consideration.
-    # XXX: why default=RootFolderDefault()? Even though required=False tells the serializer that the client does not
-    # need to send the folder field, the ModelSerializer is smart enough to know that it cannot create a valid
-    # Document instance without a value for this field. This underlying model constraint causes the initial
-    # validation to fail before any of your custom logic (like the validate or create methods) can run.
-    folder = NestedFolderField(
-        queryset=Folder.objects.all(),
-        required=False,
-        allow_null=True,
-        default=RootFolderDefault()
-    )
+    folder = FolderSerializer(read_only=True)
 
     created_by_user = serializers.SerializerMethodField()
 
@@ -254,7 +217,10 @@ class DocumentSerializer(serializers.ModelSerializer):
             'cloud_import'
         ]
         read_only_fields = [
-            'id', 'organization', 'created_by', 'created_by_user', 'created_at', 'updated_at'
+            'id', 'organization', 'folder', 'status', 'status_message',
+            'storage_key', 'original_storage_key', 'type', 'content_type',
+            'num_pages', 'file_size', 'download_only',
+            'created_by', 'created_by_user', 'created_at', 'updated_at',
         ]
 
     @extend_schema_field(serializers.DictField(allow_null=True))
@@ -334,7 +300,7 @@ class DocumentSerializer(serializers.ModelSerializer):
 
         name = data.get('name')
         if self.instance and name:
-            folder = data.get('folder', self.instance.folder)
+            folder = self.instance.folder
             queryset = Document.objects.filter(
                 created_by=request.user,
                 folder=folder,
@@ -354,6 +320,8 @@ class DocumentSerializer(serializers.ModelSerializer):
         # Automatically assign the user's organization and the user
         validated_data['organization'] = request.user.organization
         validated_data['created_by'] = request.user
+        if 'folder' not in validated_data or validated_data['folder'] is None:
+            validated_data['folder'] = Folder.objects.get_root_for_org(request.user.organization)
         return super().create(validated_data)
 
 

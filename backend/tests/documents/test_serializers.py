@@ -1,9 +1,11 @@
 import pytest
 from unittest.mock import patch
+from django.utils import timezone
 from django.test import override_settings
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from core.models import Organization
 from documents.models import Document, Folder
 from documents.serializers import (
     DocumentSerializer, FolderSerializer,
@@ -265,3 +267,70 @@ class TestDocumentVersionSerializers:
             # Assert sensitive details are filtered out
             assert "connection_id" not in ci
             assert "etag_or_rev" not in ci
+
+
+class TestDocumentSerializerReadOnlyFields:
+    """Tests for DocumentSerializer read-only field invariants."""
+
+    def test_document_serializer_read_only_fields_ignore_tampering(self, user, organization, serializer_context):
+        """Ensure system fields cannot be modified via document serializer."""
+        doc = Document.objects.create(
+            organization=organization,
+            name="Safe Doc.pdf",
+            created_by=user,
+            file_size=5000,
+            storage_key="orig/storage.pdf",
+            original_storage_key="orig/storage.pdf",
+            status="ready",
+            type="pdf",
+            num_pages=5,
+        )
+
+        serializer = DocumentSerializer(
+            instance=doc,
+            data={
+                "file_size": 999999999,
+                "storage_key": "custom/storage.pdf",
+                "original_storage_key": "custom/storage.pdf",
+                "status": "processing",
+                "type": "video",
+                "num_pages": 999,
+            },
+            partial=True,
+            context=serializer_context,
+        )
+        assert serializer.is_valid(), serializer.errors
+        serializer.save()
+
+        doc.refresh_from_db()
+        assert doc.file_size == 5000
+        assert doc.storage_key == "orig/storage.pdf"
+        assert doc.original_storage_key == "orig/storage.pdf"
+        assert doc.status == "ready"
+        assert doc.type == "pdf"
+        assert doc.num_pages == 5
+
+    def test_document_serializer_folder_is_read_only_and_ignored_on_write(self, user, user2, organization, serializer_context):
+        """Folder is strictly read-only; attempts to change folder via DocumentSerializer are ignored."""
+        root = Folder.objects.get_root_for_org(organization)
+        user2_folder = Folder.objects.create(
+            name="User2 Folder", organization=organization, created_by=user2, parent=root
+        )
+        doc = Document.objects.create(
+            organization=organization, name="Doc.pdf", created_by=user, folder=root
+        )
+
+        serializer = DocumentSerializer(
+            instance=doc,
+            data={"folder": user2_folder.id},
+            partial=True,
+            context=serializer_context,
+        )
+        assert serializer.is_valid(), serializer.errors
+        serializer.save()
+
+        doc.refresh_from_db()
+        # Destination folder was not mutated; remains root
+        assert doc.folder == root
+
+

@@ -404,5 +404,21 @@ COMPOSE_PROJECT_NAME=coneshare docker-compose exec frontend npm test -- --run sr
 - **Context/Implication:** Frontend `t()` calls repeatedly included inline `defaultValue: '...'` parameters, duplicating strings already present in `locales/*/translation.json` and causing text drift between JSX components and locale catalogs.
 - **Resolution/Action:** Prohibited inline `defaultValue` or fallback string parameters in frontend `t('key')` calls (documented as Rule 10 in `docs/tech_stack_guidelines.md`). All user-facing strings must be maintained exclusively in the 6 locale catalogs (`frontend/src/locales/*/translation.json`) and called directly via `t('key')`.
 
+### [2026-10-25] Session Entry
+- **Category:** Tooling Update / Workflow Policy
+- **Context/Implication:** 1. Maintainer explicitly manages git staging/unstaging manually; autonomous agents are forbidden from executing `git add`, `git restore --staged`, or `git reset`. 2. Test cases, docstrings, and test fixtures must maintain a professional and neutral tone, avoiding alarmist or sensitive security phrasing.
+- **Resolution/Action:**
+  1. **Git Staging Policy**: Autonomous agents must not execute `git add`, `git restore --staged`, or `git reset`. All file modifications must remain in the working tree for the maintainer to inspect, stage, and commit manually.
+  2. **Neutral Testing & Documentation Standards**:
+     - Strictly remove sensitive terms such as "vulnerability", "attack", "tampering", "forgery", "hacked", "spoofed".
+     - Frame docstrings and test descriptions as neutral behavioral specifications (e.g., "validate read-only field constraints and physical file size verification", "relative path boundary check").
+     - Use standard neutral identifiers for test paths and mock identities (e.g., `custom/storage.pdf`, `other/target.pdf`, `External User`).
+
+### [2026-10-25] Session Entry
+- **Category:** Architecture Choice / Gotcha
+- **Context/Implication:** In-flight streaming uploads in Go core service exposed partial files on disk if `/finalize` or `/internal/v1/file-info` was called concurrently, bypassing physical size validation and leaving corrupt partial files on connection drop.
+- **Resolution/Action:** Updated `handleUpload` to stream into a temporary part file (`%s.part-%s`) in the same directory and execute an atomic `os.Rename` only after `io.Copy` finishes successfully. Aborted streams automatically delete temporary part files in a deferred cleanup hook.
+
+
 
 

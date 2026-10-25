@@ -756,8 +756,9 @@ def test_create_document_is_deprecated(api_client, user, organization):
 
 
 @pytest.mark.django_db
+@patch('documents.views.fileserver_client.get_file_info', return_value={'exists': True, 'size': 123})
 @patch('documents.views.fileserver_client.generate_upload_url')
-def test_upload_document_with_path(mock_fs_upload_url, api_client, user):
+def test_upload_document_with_path(mock_fs_upload_url, mock_fs_get_file_info, api_client, user):
     """Test the two-step document upload process into a pre-existing folder path."""
     mock_fs_upload_url.return_value = "/files/upload/some-token"
     # First, create the folder structure
@@ -778,7 +779,6 @@ def test_upload_document_with_path(mock_fs_upload_url, api_client, user):
     finalize_data = {
         'storage_key': upload_data['storage_key'],
         'unique_name': upload_data['unique_name'],
-        'file_size': 123,
         'content_type': 'application/msword',
         'path': 'Client Reports/Q4/Final/report.docx'
     }
@@ -789,6 +789,7 @@ def test_upload_document_with_path(mock_fs_upload_url, api_client, user):
 
     doc = Document.objects.first()
     assert doc.name == 'report.docx'
+    assert doc.file_size == 123
     assert doc.folder is not None
     assert doc.folder.name == 'Final'
     assert doc.folder.parent.name == 'Q4'
@@ -796,10 +797,15 @@ def test_upload_document_with_path(mock_fs_upload_url, api_client, user):
 
 
 @pytest.mark.django_db
+@patch('documents.views.fileserver_client.get_file_info')
 @patch('documents.views.fileserver_client.generate_upload_url')
-def test_upload_duplicate_root_file_is_renamed(mock_fs_upload_url, api_client):
+def test_upload_duplicate_root_file_is_renamed(mock_fs_upload_url, mock_fs_get_file_info, api_client):
     """Uploading the same root-level filename twice should auto-rename the second file."""
     mock_fs_upload_url.return_value = "/files/upload/some-token"
+    mock_fs_get_file_info.side_effect = [
+        {'exists': True, 'size': 123},
+        {'exists': True, 'size': 456},
+    ]
 
     first_request_data = {'file_name': 'foo.txt', 'path': 'foo.txt', 'file_size': 123}
     first_request = api_client.post('/api/v1/uploads/document/request/', first_request_data)
@@ -810,7 +816,6 @@ def test_upload_duplicate_root_file_is_renamed(mock_fs_upload_url, api_client):
     first_finalize_data = {
         'storage_key': first_upload_data['storage_key'],
         'unique_name': first_upload_data['unique_name'],
-        'file_size': 123,
         'content_type': 'text/plain',
         'path': 'foo.txt'
     }
@@ -826,7 +831,6 @@ def test_upload_duplicate_root_file_is_renamed(mock_fs_upload_url, api_client):
     second_finalize_data = {
         'storage_key': second_upload_data['storage_key'],
         'unique_name': second_upload_data['unique_name'],
-        'file_size': 456,
         'content_type': 'text/plain',
         'path': 'foo.txt'
     }
@@ -838,8 +842,9 @@ def test_upload_duplicate_root_file_is_renamed(mock_fs_upload_url, api_client):
 
 
 @pytest.mark.django_db
+@patch('documents.views.fileserver_client.get_file_info', return_value={'exists': True, 'size': 1024})
 @patch('documents.views.fileserver_client.generate_upload_url')
-def test_finalize_duplicate_name_defensive_rename(mock_fs_upload_url, api_client, user):
+def test_finalize_duplicate_name_defensive_rename(mock_fs_upload_url, mock_fs_get_file_info, api_client, user):
     """Test that calling finalize with a duplicate name automatically renames defensively to prevent 500 crashes."""
     api_client.force_authenticate(user=user)
     mock_fs_upload_url.return_value = "/files/upload/some-token"
@@ -852,7 +857,6 @@ def test_finalize_duplicate_name_defensive_rename(mock_fs_upload_url, api_client
     finalize_data = {
         'storage_key': f"{user.organization.id}/storage/README_zh.md",
         'unique_name': 'README_zh.md',
-        'file_size': 1024,
         'content_type': 'text/markdown',
         'path': None
     }
@@ -1291,9 +1295,10 @@ class TestDocumentVersionUploadViews:
         initial_version = document.versions.get(is_primary=True)
         return document, initial_version
 
+    @patch('documents.views.fileserver_client.get_file_info', return_value={'exists': True, 'size': 11})
     @patch('documents.services.generate_pdf_pages_task.delay')
     @patch('documents.views.fileserver_client.generate_upload_url')
-    def test_upload_new_version_success(self, mock_fs_upload_url, mock_task_delay, api_client, document_with_version):
+    def test_upload_new_version_success(self, mock_fs_upload_url, mock_task_delay, mock_fs_get_file_info, api_client, document_with_version):
         """Test successfully uploading a new version of a document."""
         mock_fs_upload_url.return_value = "/files/upload/some-token"
         doc, initial_version = document_with_version
@@ -1310,7 +1315,6 @@ class TestDocumentVersionUploadViews:
         finalize_url = f'/api/v1/uploads/document/{doc.id}/versions/finalize/'
         finalize_data = {
             'storage_key': upload_data['storage_key'],
-            'file_size': 11,
             'content_type': 'application/pdf'
         }
         finalize_response = api_client.post(finalize_url, finalize_data)
@@ -1325,6 +1329,7 @@ class TestDocumentVersionUploadViews:
 
         new_version = doc.versions.get(version_number=2)
         assert new_version.is_primary is True
+        assert new_version.file_size == 11
         assert initial_version.is_primary is False
         assert new_version.render_status == DocumentVersion.RENDER_NOT_GENERATED
 
@@ -1709,10 +1714,11 @@ class TestQuotaAndSizeTracking:
         user.total_document_size = 0
         user.save()
 
+    @patch('documents.views.fileserver_client.get_file_info')
     @patch('documents.services.generate_pdf_pages_task.delay')
     @patch('documents.services.convert_office_to_pdf_task.delay')
     @patch('documents.views.fileserver_client.generate_upload_url')
-    def test_document_lifecycle_updates_user_size(self, mock_fs_upload_url, mock_convert_task, mock_pdf_task, api_client, user):
+    def test_document_lifecycle_updates_user_size(self, mock_fs_upload_url, mock_convert_task, mock_pdf_task, mock_fs_get_file_info, api_client, user):
         """
         Test that creating, versioning, and deleting documents correctly updates
         the user's total_document_size.
@@ -1722,10 +1728,13 @@ class TestQuotaAndSizeTracking:
 
         # 1. Create a document (1MB)
         file_size_1 = 1 * 1024 * 1024
+        mock_fs_get_file_info.side_effect = [
+            {'exists': True, 'size': file_size_1},
+            {'exists': True, 'size': 2 * 1024 * 1024},
+        ]
         finalize_data = {
             'storage_key': f"{user.organization.id}/key1",
             'unique_name': 'doc1.pdf',
-            'file_size': file_size_1,
             'content_type': 'application/pdf',
         }
         response = api_client.post('/api/v1/uploads/document/finalize/', finalize_data)
@@ -1739,7 +1748,6 @@ class TestQuotaAndSizeTracking:
         finalize_version_url = f'/api/v1/uploads/document/{doc.id}/versions/finalize/'
         finalize_version_data = {
             'storage_key': f"{user.organization.id}/key2",
-            'file_size': file_size_2,
             'content_type': 'application/pdf'
         }
 
@@ -2654,5 +2662,143 @@ def test_ensure_folder_paths_touches_parent_folder_mtime(api_client, user, organ
 
     parent_folder.refresh_from_db()
     assert parent_folder.updated_at > past_time
+
+
+@pytest.mark.django_db
+class TestDocumentUploadConstraints:
+    """Upload request and finalize endpoints file size and attribute constraints."""
+
+    def test_upload_request_rejects_negative_and_zero_file_size(self, api_client, user):
+        api_client.force_authenticate(user=user)
+        # Negative file_size
+        res_neg = api_client.post('/api/v1/uploads/document/request/', {
+            'file_name': 'test.pdf',
+            'file_size': -100,
+        }, format='json')
+        assert res_neg.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'file_size' in res_neg.data
+
+        # Zero file_size
+        res_zero = api_client.post('/api/v1/uploads/document/request/', {
+            'file_name': 'test.pdf',
+            'file_size': 0,
+        }, format='json')
+        assert res_zero.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'file_size' in res_zero.data
+
+    @patch('documents.views.fileserver_client.get_file_info')
+    def test_upload_finalize_verifies_storage_file_size_and_ignores_client_value(self, mock_get_info, api_client, user, organization):
+        """Finalize must verify physical file size via storage server, rejecting missing/empty files and ignoring client file_size."""
+        api_client.force_authenticate(user=user)
+
+        # 1. Physical file not found or size <= 0
+        mock_get_info.return_value = {'exists': False, 'size': 0}
+        res_missing = api_client.post('/api/v1/uploads/document/finalize/', {
+            'storage_key': f'{organization.id}/missing.pdf',
+            'unique_name': 'missing.pdf',
+            'content_type': 'application/pdf',
+        }, format='json')
+        assert res_missing.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'Uploaded file not found' in res_missing.data['detail']
+
+        # 2. Physical file exists with size 2048, client passes non-matching file_size 10
+        mock_get_info.return_value = {'exists': True, 'size': 2048}
+        res_valid = api_client.post('/api/v1/uploads/document/finalize/', {
+            'storage_key': f'{organization.id}/valid.pdf',
+            'unique_name': 'valid.pdf',
+            'file_size': 10,  # client-provided value is ignored in favor of storage server size
+            'content_type': 'application/pdf',
+        }, format='json')
+        assert res_valid.status_code == status.HTTP_202_ACCEPTED
+        created_doc = Document.objects.get(name='valid.pdf')
+        assert created_doc.file_size == 2048
+
+    @patch('documents.views.fileserver_client.get_file_info')
+    def test_version_upload_request_and_finalize_rejects_negative_and_zero_file_size(self, mock_get_info, api_client, user, organization):
+        api_client.force_authenticate(user=user)
+        doc = Document.objects.create(
+            name="VersionDoc.pdf",
+            organization=organization,
+            created_by=user,
+            file_size=1024,
+        )
+        DocumentVersion.objects.create(document=doc, version_number=1, is_primary=True)
+
+        res_req = api_client.post(f'/api/v1/uploads/document/{doc.id}/versions/request/', {
+            'file_name': 'v2.pdf',
+            'file_size': -500,
+        }, format='json')
+        assert res_req.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'file_size' in res_req.data
+
+        # Finalize when storage server reports missing / zero file
+        mock_get_info.return_value = {'exists': False, 'size': 0}
+        res_fin = api_client.post(f'/api/v1/uploads/document/{doc.id}/versions/finalize/', {
+            'storage_key': f'{organization.id}/v2.pdf',
+            'content_type': 'application/pdf',
+        }, format='json')
+        assert res_fin.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'Uploaded file not found' in res_fin.data['detail']
+
+        # Finalize when storage server reports actual size 4096
+        mock_get_info.return_value = {'exists': True, 'size': 4096}
+        res_fin_ok = api_client.post(f'/api/v1/uploads/document/{doc.id}/versions/finalize/', {
+            'storage_key': f'{organization.id}/v2.pdf',
+            'file_size': 1,  # client-provided size is ignored in favor of physical file size
+            'content_type': 'application/pdf',
+        }, format='json')
+        assert res_fin_ok.status_code == status.HTTP_202_ACCEPTED
+        doc.refresh_from_db()
+        new_version = doc.versions.get(version_number=2)
+        assert new_version.file_size == 4096
+
+    def test_patch_document_ignores_read_only_fields_and_preserves_folder(self, api_client, user, user2, organization):
+        """DocumentViewSet PATCH ignores read-only attributes and preserves folder structure."""
+        api_client.force_authenticate(user=user)
+        root = Folder.objects.get_root_for_org(organization)
+        user2_folder = Folder.objects.create(
+            name="User2 Folder", organization=organization, created_by=user2, parent=root
+        )
+        vault_folder = Folder.objects.create(
+            name="Vault Room", organization=organization, created_by=None, parent=root, folder_type=Folder.FOLDER_TYPE_VAULT
+        )
+        doc = Document.objects.create(
+            name="TargetDoc.pdf",
+            organization=organization,
+            created_by=user,
+            file_size=2048,
+            storage_key="orig/target.pdf",
+            original_storage_key="orig/target.pdf",
+            status="ready",
+        )
+
+        # 1. System attributes must be ignored on PATCH
+        res_patch = api_client.patch(f'/api/v1/documents/{doc.id}/', {
+            'file_size': 9999999,
+            'storage_key': 'other/target.pdf',
+            'status': 'processing',
+        }, format='json')
+        assert res_patch.status_code == status.HTTP_200_OK
+        doc.refresh_from_db()
+        assert doc.file_size == 2048
+        assert doc.storage_key == "orig/target.pdf"
+        assert doc.status == "ready"
+
+        # 2. Folder attribute is read-only and ignored on PATCH (document cannot be moved via PATCH)
+        res_folder_other = api_client.patch(f'/api/v1/documents/{doc.id}/', {
+            'folder': user2_folder.id
+        }, format='json')
+        assert res_folder_other.status_code == status.HTTP_200_OK
+        doc.refresh_from_db()
+        assert doc.folder == root
+
+        res_folder_vault = api_client.patch(f'/api/v1/documents/{doc.id}/', {
+            'folder': vault_folder.id
+        }, format='json')
+        assert res_folder_vault.status_code == status.HTTP_200_OK
+        doc.refresh_from_db()
+        assert doc.folder == root
+
+
 
 

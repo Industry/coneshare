@@ -39,6 +39,11 @@ type CopyFileRequest struct {
 	DestinationStorageKey string `json:"destination_storage_key"`
 }
 
+type FileInfoResponse struct {
+	Exists bool  `json:"exists"`
+	Size   int64 `json:"size"`
+}
+
 type TokenInfo struct {
 	StorageKey string
 	Filename   string
@@ -77,6 +82,7 @@ func main() {
 		r.Post("/generate-preview-url", generateURLHandler("preview", 5*time.Minute))
 		r.Post("/delete-file", deleteFileHandler(config))
 		r.Post("/copy-file", copyFileHandler(config))
+		r.Post("/file-info", getFileInfoHandler(config))
 	})
 
 	// Public routes for file handling
@@ -179,20 +185,41 @@ func handleUpload(config Config) http.HandlerFunc {
 			return
 		}
 
-		outFile, err := os.Create(filePath)
+		tmpPath := fmt.Sprintf("%s.part-%s", filePath, uuid.New().String())
+		outFile, err := os.Create(tmpPath)
 		if err != nil {
-			log.Printf("Error creating file %s: %v", filePath, err)
+			log.Printf("Error creating temp file %s: %v", tmpPath, err)
 			http.Error(w, "Could not save file", http.StatusInternalServerError)
 			return
 		}
-		defer outFile.Close()
+
+		uploadSuccess := false
+		defer func() {
+			outFile.Close()
+			if !uploadSuccess {
+				os.Remove(tmpPath)
+			}
+		}()
 
 		_, err = io.Copy(outFile, r.Body)
 		if err != nil {
-			log.Printf("Error writing file %s: %v", filePath, err)
+			log.Printf("Error writing file %s: %v", tmpPath, err)
 			http.Error(w, "Failed to write file content", http.StatusInternalServerError)
 			return
 		}
+
+		if err := outFile.Close(); err != nil {
+			log.Printf("Error closing temp file %s: %v", tmpPath, err)
+			http.Error(w, "Failed to flush file", http.StatusInternalServerError)
+			return
+		}
+
+		if err := os.Rename(tmpPath, filePath); err != nil {
+			log.Printf("Error renaming file from %s to %s: %v", tmpPath, filePath, err)
+			http.Error(w, "Failed to finalize file", http.StatusInternalServerError)
+			return
+		}
+		uploadSuccess = true
 
 		w.WriteHeader(http.StatusOK)
 	}
@@ -244,6 +271,63 @@ func deleteFileHandler(config Config) http.HandlerFunc {
 		}
 
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func getFileInfoHandler(config Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var reqBody URLRequest
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+		if reqBody.StorageKey == "" {
+			http.Error(w, "storage_key is required", http.StatusBadRequest)
+			return
+		}
+
+		filePath := filepath.Join(config.StoragePath, reqBody.StorageKey)
+
+		// Security check to prevent path traversal.
+		storageRoot, err := filepath.Abs(config.StoragePath)
+		if err != nil {
+			log.Printf("Configuration error: invalid storage path: %v", err)
+			http.Error(w, "Internal server error due to server configuration", http.StatusInternalServerError)
+			return
+		}
+		safePrefix := storageRoot + string(os.PathSeparator)
+
+		cleanPath, err := filepath.Abs(filePath)
+		if err != nil {
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		if !strings.HasPrefix(cleanPath, safePrefix) {
+			http.Error(w, "Forbidden: path traversal attempt", http.StatusForbidden)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		info, err := os.Stat(cleanPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				json.NewEncoder(w).Encode(FileInfoResponse{Exists: false, Size: 0})
+				return
+			}
+			log.Printf("Error checking file info for %s: %v", cleanPath, err)
+			http.Error(w, "Could not check file info", http.StatusInternalServerError)
+			return
+		}
+
+		if info.IsDir() {
+			json.NewEncoder(w).Encode(FileInfoResponse{Exists: false, Size: 0})
+			return
+		}
+
+		json.NewEncoder(w).Encode(FileInfoResponse{
+			Exists: true,
+			Size:   info.Size(),
+		})
 	}
 }
 
