@@ -72,6 +72,42 @@ class TestDatarooms(BaseMCPTestCase):
         self.assertEqual(res["id"], "dtr_100")
         mock_client.create_dataroom.assert_awaited_once_with(name="Series A DD", description=None, document_ids=["doc_1"])
 
+    async def test_remove_content_from_dataroom_sends_dataroom_document_ids(self):
+        async def mock_request(self_client, method, path, params=None, json_data=None, files=None):
+            self.assertEqual(method, "POST")
+            self.assertEqual(path, "/datarooms/dtr_100/remove-content/")
+            self.assertIn("dataroom_document_ids", json_data)
+            self.assertNotIn("document_ids", json_data)
+            self.assertEqual(json_data["dataroom_document_ids"], ["ddoc_1", "ddoc_2"])
+            return {"success": True}
+
+        old_request = ConeshareClient._request
+        ConeshareClient._request = mock_request
+        try:
+            client = ConeshareClient(api_key="cs_live_testkey123456789")
+            res = await client.remove_content_from_dataroom("dtr_100", document_ids=["ddoc_1", "ddoc_2"])
+            self.assertTrue(res.get("success"))
+        finally:
+            ConeshareClient._request = old_request
+
+    async def test_remove_content_from_dataroom_folder_only_omits_document_ids(self):
+        async def mock_request(self_client, method, path, params=None, json_data=None, files=None):
+            self.assertEqual(method, "POST")
+            self.assertEqual(path, "/datarooms/dtr_100/remove-content/")
+            self.assertIn("dataroom_folder_ids", json_data)
+            self.assertNotIn("dataroom_document_ids", json_data)
+            self.assertEqual(json_data["dataroom_folder_ids"], ["fld_1"])
+            return {"success": True}
+
+        old_request = ConeshareClient._request
+        ConeshareClient._request = mock_request
+        try:
+            client = ConeshareClient(api_key="cs_live_testkey123456789")
+            res = await client.remove_content_from_dataroom("dtr_100", dataroom_folder_ids=["fld_1"])
+            self.assertTrue(res.get("success"))
+        finally:
+            ConeshareClient._request = old_request
+
     async def test_remove_content_from_dataroom_tool_execution(self):
         mcp = FastMCP("test_mcp")
         register_dataroom_tools(mcp)
@@ -82,9 +118,19 @@ class TestDatarooms(BaseMCPTestCase):
 
         tool = await mcp.get_tool("remove_content_from_dataroom")
         with patch("coneshare_mcp.tools.datarooms.ConeshareClient.from_ctx", return_value=mock_client):
-            res = await tool.fn(ctx=mock_ctx, dataroom_id="dtr_100", document_ids=["doc_1"])
+            res = await tool.fn(ctx=mock_ctx, dataroom_id="dtr_100", document_ids=["doc_1"], folder_ids=None)
         self.assertTrue(res["success"])
-        mock_client.remove_content_from_dataroom.assert_awaited_once_with(dataroom_id="dtr_100", document_ids=["doc_1"])
+        mock_client.remove_content_from_dataroom.assert_awaited_once_with(dataroom_id="dtr_100", document_ids=["doc_1"], dataroom_folder_ids=None)
+
+    async def test_remove_content_from_dataroom_tool_empty_params_guard(self):
+        mcp = FastMCP("test_mcp")
+        register_dataroom_tools(mcp)
+
+        mock_ctx = MagicMock()
+        tool = await mcp.get_tool("remove_content_from_dataroom")
+        res = await tool.fn(ctx=mock_ctx, dataroom_id="dtr_100", document_ids=None, folder_ids=None)
+        self.assertTrue(res.get("error"))
+        self.assertIn("At least one document_id or folder_id must be provided", res.get("message", ""))
 
     async def test_update_dataroom_tool_execution(self):
         mcp = FastMCP("test_mcp")

@@ -28,16 +28,17 @@ def register_document_tools(mcp: FastMCP) -> None:
         client = ConeshareClient.from_ctx(ctx)
         return await client.get_document(document_id=document_id)
 
-    @mcp.tool()
-    async def search_documents(
-        ctx: Context,
-        query: str = Field(description="Search term for matching document titles or descriptions"),
-        page: int = Field(default=1, ge=1, description="Page number"),
-        page_size: int = Field(default=20, ge=1, le=100, description="Items per page (max 100)"),
-    ) -> dict:
-        """Search workspace documents by full-text title or description query with pagination."""
-        client = ConeshareClient.from_ctx(ctx)
-        return await client.search_documents(query=query, page=page, page_size=page_size)
+    # TODO (future PR): Uncomment once backend DocumentViewSet supports ?search= query parameter
+    # @mcp.tool()
+    # async def search_documents(
+    #     ctx: Context,
+    #     query: str = Field(description="Search term for matching document titles or descriptions"),
+    #     page: int = Field(default=1, ge=1, description="Page number"),
+    #     page_size: int = Field(default=20, ge=1, le=100, description="Items per page (max 100)"),
+    # ) -> dict:
+    #     """Search workspace documents by full-text title or description query with pagination."""
+    #     client = ConeshareClient.from_ctx(ctx)
+    #     return await client.search_documents(query=query, page=page, page_size=page_size)
 
     @mcp.tool()
     async def delete_document(
@@ -48,13 +49,11 @@ def register_document_tools(mcp: FastMCP) -> None:
         client = ConeshareClient.from_ctx(ctx)
         return await client.delete_document(document_id=document_id)
 
-
-
     @mcp.tool()
     async def request_document_upload(
         ctx: Context,
         file_name: str = Field(description="Name of the file to upload (e.g., 'large_dataset.zip')"),
-        file_size: int = Field(default=0, description="Size of the file in bytes (optional, defaults to 0 if unknown)"),
+        file_size: int = Field(gt=0, description="Size of the file in bytes"),
         path: Optional[str] = Field(default=None, description="Optional root-relative destination folder path (e.g. 'data/exports')"),
     ) -> dict:
         """Request a pre-signed URL to upload documents or datasets directly to storage.
@@ -73,9 +72,9 @@ def register_document_tools(mcp: FastMCP) -> None:
     async def finalize_document_upload(
         ctx: Context,
         storage_key: str = Field(description="Storage key returned from request_document_upload"),
+        file_size: int = Field(gt=0, description="Size of the uploaded file in bytes"),
         unique_name: Optional[str] = Field(default=None, description="Unique name returned from request_document_upload"),
         file_name: Optional[str] = Field(default=None, description="Original file name (fallback for unique_name)"),
-        file_size: int = Field(default=0, description="Size of the uploaded file in bytes"),
         content_type: str = Field(default="application/octet-stream", description="MIME type of the file"),
         path: Optional[str] = Field(default=None, description="Optional root-relative destination folder path"),
     ) -> dict:

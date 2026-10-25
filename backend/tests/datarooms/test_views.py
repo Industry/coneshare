@@ -697,6 +697,36 @@ class TestDataroomViewSet:
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert DataroomDocument.objects.count() == 0
 
+    def test_remove_document_from_dataroom_by_document_id(self, api_client, dataroom, document):
+        """Test removing a document using workspace Document.id in dataroom_document_ids."""
+        dd = DataroomDocument.objects.create(dataroom=dataroom, document=document, name=document.name)
+        assert DataroomDocument.objects.count() == 1
+
+        url = f'/api/v1/datarooms/{dataroom.id}/remove-content/'
+        data = {'dataroom_document_ids': [str(document.id)]}
+        response = api_client.post(url, data)
+
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert DataroomDocument.objects.count() == 0
+
+    def test_remove_document_with_wrong_key_returns_clean_400(self, api_client, dataroom, document):
+        """When client sends wrong keys (e.g. document_ids instead of dataroom_document_ids), return clean 400."""
+        url = f'/api/v1/datarooms/{dataroom.id}/remove-content/'
+        data = {'document_ids': [str(document.id)]}
+        response = api_client.post(url, data)
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        err_msg = str(response.json())
+        assert "Either 'dataroom_document_ids' or 'dataroom_folder_ids' must be provided" in err_msg
+
+    def test_remove_content_with_empty_payload_returns_400(self, api_client, dataroom):
+        """Test that removing content with no IDs returns 400 Bad Request."""
+        url = f'/api/v1/datarooms/{dataroom.id}/remove-content/'
+        response = api_client.post(url, {'dataroom_document_ids': []})
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+
     def test_move_document_to_folder(self, api_client, dataroom, document):
         """Test moving a document into a folder within a dataroom."""
         dataroom_doc = DataroomDocument.objects.create(dataroom=dataroom, document=document, name=document.name)
@@ -1480,6 +1510,57 @@ class TestDataroomViewSet:
         # This should succeed without raising MultipleObjectsReturned exception!
         assert response_remove.status_code == status.HTTP_204_NO_CONTENT
         assert not Document.objects.filter(name='test_file_multiple.pdf').exists()
+
+    @patch('documents.services.fileserver_client.delete_file')
+    def test_remove_content_cleans_backing_document_when_both_direct_and_linked_associations_exist(
+        self, mock_delete_file, api_client, dataroom
+    ):
+        """
+        If a document has both a direct upload association and a linked association
+        in the same dataroom, removing content cleans up the backing document and storage files
+        regardless of the query traversal order.
+        """
+        from documents.models import Document
+        from datarooms.models import DataroomFolder
+
+        # 1. Finalize direct upload into dataroom subfolder
+        subfolder = DataroomFolder.objects.create(name="SubFolder", dataroom=dataroom)
+        url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
+        data_finalize = {
+            'storage_key': f'{dataroom.organization.id}/uploads/dual_assoc.pdf',
+            'unique_name': 'dual_assoc.pdf',
+            'file_size': 1024,
+            'content_type': 'application/pdf',
+            'destination_folder_id': str(subfolder.id),
+        }
+        res = api_client.post(url_finalize, data_finalize, format='json')
+        assert res.status_code == status.HTTP_202_ACCEPTED
+        direct_ddoc = DataroomDocument.objects.get(name='dual_assoc.pdf', dataroom=dataroom, folder=subfolder)
+        backing_doc = direct_ddoc.document
+        assert direct_ddoc.is_direct_upload is True
+
+        # 2. Simulate secondary linked association in root folder (e.g. added via API or legacy import)
+        linked_ddoc = DataroomDocument.objects.create(
+            dataroom=dataroom,
+            document=backing_doc,
+            folder=None,
+            name="dual_assoc_linked.pdf",
+            is_direct_upload=False,
+        )
+
+        # 3. Remove both associations (sending linked_ddoc first to test order independence)
+        url_remove = f'/api/v1/datarooms/{dataroom.id}/remove-content/'
+        data_remove = {
+            'dataroom_document_ids': [str(linked_ddoc.id), str(direct_ddoc.id)],
+            'dataroom_folder_ids': []
+        }
+        response_remove = api_client.post(url_remove, data_remove, format='json')
+        assert response_remove.status_code == status.HTTP_204_NO_CONTENT
+
+        # 4. Assert backing document and files are deleted
+        mock_delete_file.assert_called_with(f'{dataroom.organization.id}/uploads/dual_assoc.pdf')
+        assert not Document.objects.filter(id=backing_doc.id).exists()
+        assert not DataroomDocument.objects.filter(id__in=[direct_ddoc.id, linked_ddoc.id]).exists()
 
 
 
