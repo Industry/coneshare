@@ -875,4 +875,66 @@ class TestFileRequestUploadConstraints:
         assert res_exceed.status_code == status.HTTP_400_BAD_REQUEST
         assert 'File size exceeds' in res_exceed.data['detail']
 
+    @patch('filerequests.views.scan_storage_key_or_raise')
+    def test_finalize_upload_rejects_already_claimed_storage_key(self, _mock_scan, public_client, file_request):
+        """Finalizing an upload with a storage key already registered in the organization returns HTTP 400 before scanning."""
+        org_id = file_request.created_by.organization.id
+        claimed_key = f"{org_id}/existing/document.pdf"
+
+        Document.objects.create(
+            name="Existing.pdf",
+            organization=file_request.created_by.organization,
+            created_by=file_request.created_by,
+            original_storage_key=claimed_key,
+            storage_key=claimed_key,
+        )
+
+        url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
+        response = public_client.post(url, {
+            'storage_key': claimed_key,
+            'unique_name': 'submitted.pdf',
+            'content_type': 'application/pdf',
+            'uploader_name': 'External User',
+            'uploader_email': 'user@example.com',
+        }, format='json')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'This storage key has already been registered.' in response.data['detail']
+        _mock_scan.assert_not_called()
+
+    @patch('filerequests.views.fileserver_client.get_file_info', return_value={'exists': True, 'size': 1024})
+    @patch('filerequests.views.scan_storage_key_or_raise')
+    @patch('filerequests.views.dispatch_automation_event_task.delay')
+    @patch('filerequests.views.safe_delete_storage_file', return_value=False)
+    def test_finalize_upload_skipped_deletion_recorded_as_failed(
+        self,
+        mock_safe_delete,
+        mock_dispatch_automation,
+        mock_scan,
+        mock_get_info,
+        public_client,
+        file_request,
+    ):
+        """When safe_delete_storage_file skips deletion, storage_cleanup_status must be FAILED, not DELETED."""
+        from documents.malware_scan import MalwareDetectedError
+        mock_scan.side_effect = MalwareDetectedError("Threat detected.")
+
+        url = f'/api/v1/public/file-requests/{file_request.slug}/finalize-upload/'
+        storage_key = f"{file_request.created_by.organization.id}/threat-key.pdf"
+
+        response = public_client.post(url, {
+            'storage_key': storage_key,
+            'unique_name': 'doc.pdf',
+            'content_type': 'application/pdf',
+            'uploader_name': 'External User',
+            'uploader_email': 'user@example.com',
+        }, format='json')
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        threat = SecurityThreatEvent.objects.first()
+        assert threat.storage_cleanup_status == SecurityThreatEvent.StorageCleanupStatus.FAILED
+        assert "skipped" in threat.storage_cleanup_error.lower()
+
+
+
 

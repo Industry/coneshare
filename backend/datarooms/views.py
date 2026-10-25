@@ -24,6 +24,7 @@ from documents.services import (
     generate_storage_key,
     create_document_from_upload,
     validate_storage_key,
+    ensure_storage_key_not_claimed,
 )
 
 from documents.fileserver import fileserver_client
@@ -697,6 +698,9 @@ class DataroomViewSet(viewsets.ModelViewSet):
             validated_data['storage_key'] = validate_storage_key(
                 validated_data['storage_key'], dataroom.organization.id
             )
+            ensure_storage_key_not_claimed(
+                validated_data['storage_key'], dataroom.organization.id
+            )
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
@@ -802,6 +806,8 @@ class DataroomViewSet(viewsets.ModelViewSet):
 
                 if destination_folder:
                     touch_dataroom_folder_ancestors(destination_folder)
+        except serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error(f"Failed to finalize dataroom document upload: {e}")
             return Response(

@@ -1770,6 +1770,32 @@ class TestDataroomFolderViewSet:
             response = api_client.post(url_finalize, data, format='json')
             assert response.status_code == status.HTTP_400_BAD_REQUEST, f"Key {key} should have been rejected with 400, got {response.status_code}"
 
+    @patch('datarooms.views.fileserver_client.get_file_info', return_value={'exists': True, 'size': 1024})
+    def test_dataroom_upload_finalize_rejects_already_claimed_storage_key(self, mock_get_info, api_client, dataroom):
+        """Finalizing a dataroom upload with an already registered storage key returns HTTP 400."""
+        api_client.force_authenticate(user=dataroom.created_by)
+        url_finalize = f'/api/v1/datarooms/{dataroom.id}/uploads/finalize/'
+        org_id = dataroom.created_by.organization.id
+        claimed_key = f"{org_id}/dataroom/claimed.pdf"
+
+        Document.objects.create(
+            name="ExistingDataroomDoc.pdf",
+            organization=dataroom.created_by.organization,
+            created_by=dataroom.created_by,
+            original_storage_key=claimed_key,
+            storage_key=claimed_key,
+        )
+
+        data = {
+            'storage_key': claimed_key,
+            'unique_name': 'duplicate_dataroom.pdf',
+            'content_type': 'application/pdf',
+        }
+        response = api_client.post(url_finalize, data, format='json')
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'This storage key has already been registered.' in response.data['detail']
+
+
 
 
 class TestDataroomDocumentViewSet:

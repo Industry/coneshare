@@ -21,7 +21,11 @@ from documents.services import (
     soft_delete_folder,
     restore_item,
     is_dataroom_vault_document,
+    ensure_storage_key_not_claimed,
+    safe_delete_storage_file,
+    filter_unreferenced_storage_keys,
 )
+from rest_framework import serializers
 from core.services import get_dynamic_setting
 
 
@@ -1189,6 +1193,105 @@ class TestFolderMtimeUpdates:
         # Mock a cycle in memory
         f1.parent = f2
         touch_folder_ancestors(f2)  # Should terminate cleanly without hanging
+
+
+class TestStorageKeyIsolationAndSafeDeletion:
+    def test_ensure_storage_key_not_claimed_raises_on_existing_document(self, user):
+        """Verifies that an existing document's storage key is rejected on re-registration."""
+        key = f"{user.organization.id}/existing/file.pdf"
+        Document.objects.create(
+            name="Existing.pdf",
+            organization=user.organization,
+            created_by=user,
+            original_storage_key=key,
+            storage_key=key,
+        )
+        with pytest.raises(serializers.ValidationError) as exc:
+            ensure_storage_key_not_claimed(key, user.organization.id)
+        assert "This storage key has already been registered." in str(exc.value)
+
+    def test_ensure_storage_key_not_claimed_raises_on_existing_version(self, user):
+        """Verifies that an existing document version's storage key is rejected on re-registration."""
+        key = f"{user.organization.id}/version/file.pdf"
+        doc = Document.objects.create(
+            name="Doc.pdf",
+            organization=user.organization,
+            created_by=user,
+        )
+        DocumentVersion.objects.create(
+            document=doc,
+            version_number=1,
+            original_storage_key=key,
+            storage_key=key,
+        )
+        with pytest.raises(serializers.ValidationError) as exc:
+            ensure_storage_key_not_claimed(key, user.organization.id)
+        assert "This storage key has already been registered." in str(exc.value)
+
+    def test_ensure_storage_key_not_claimed_passes_for_fresh_key(self, user):
+        """Verifies that an unclaimed storage key passes validation without errors."""
+        fresh_key = f"{user.organization.id}/fresh/unclaimed.pdf"
+        ensure_storage_key_not_claimed(fresh_key, user.organization.id)
+
+    @patch('documents.services.fileserver_client.delete_file')
+    def test_safe_delete_storage_file_deletes_when_no_other_references(self, mock_delete, user):
+        """Verifies that physical deletion occurs when no other document records reference the key."""
+        key = f"{user.organization.id}/single/doc.pdf"
+        result = safe_delete_storage_file(key, user.organization.id)
+        assert result is True
+        mock_delete.assert_called_once_with(key)
+
+    @patch('documents.services.fileserver_client.delete_file')
+    def test_safe_delete_storage_file_skips_when_another_document_references_key(self, mock_delete, user):
+        """Verifies that physical deletion is skipped when another document references the same storage key."""
+        key = f"{user.organization.id}/shared/doc.pdf"
+        Document.objects.create(
+            name="Retained.pdf",
+            organization=user.organization,
+            created_by=user,
+            original_storage_key=key,
+            storage_key=key,
+        )
+        result = safe_delete_storage_file(key, user.organization.id)
+        assert result is False
+        mock_delete.assert_not_called()
+
+    def test_ensure_storage_key_not_claimed_raises_on_soft_deleted_document(self, user):
+        """Verifies that a soft-deleted document's storage key is still treated as claimed."""
+        key = f"{user.organization.id}/soft_deleted/file.pdf"
+        Document.objects.create(
+            name="SoftDeleted.pdf",
+            organization=user.organization,
+            created_by=user,
+            original_storage_key=key,
+            storage_key=key,
+            deleted_at=timezone.now(),
+        )
+        with pytest.raises(serializers.ValidationError) as exc:
+            ensure_storage_key_not_claimed(key, user.organization.id)
+        assert "This storage key has already been registered." in str(exc.value)
+
+    def test_filter_unreferenced_storage_keys_batches_correctly(self, user):
+        """Verifies that filter_unreferenced_storage_keys accurately filters out referenced keys."""
+        k1 = f"{user.organization.id}/doc1.pdf"
+        k2 = f"{user.organization.id}/doc2.pdf"
+        k3 = f"{user.organization.id}/doc3.pdf"
+
+        Document.objects.create(name="Doc1", organization=user.organization, created_by=user, original_storage_key=k1)
+        Document.objects.create(name="Doc2", organization=user.organization, created_by=user, original_storage_key=k2)
+
+        # k1 and k2 are referenced, k3 is unreferenced
+        unreferenced = filter_unreferenced_storage_keys({k1, k2, k3}, user.organization.id)
+        assert unreferenced == {k3}
+
+        # If we exclude Doc1, k1 becomes unreferenced as well
+        doc1 = Document.objects.get(name="Doc1")
+        unreferenced_with_exclusion = filter_unreferenced_storage_keys(
+            {k1, k2, k3}, user.organization.id, exclude_document_ids=[doc1.pk]
+        )
+        assert unreferenced_with_exclusion == {k1, k3}
+
+
 
 
 
