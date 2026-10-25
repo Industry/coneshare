@@ -42,6 +42,7 @@ from .services import (
     promote_document_version,
     touch_folder_ancestors,
     validate_storage_key,
+    ensure_storage_key_not_claimed,
 )
 
 from .renderers import get_renderer
@@ -236,6 +237,9 @@ class DocumentUploadFinalizeView(APIView):
             validated_data['storage_key'] = validate_storage_key(
                 validated_data['storage_key'], request.user.organization.id
             )
+            ensure_storage_key_not_claimed(
+                validated_data['storage_key'], request.user.organization.id
+            )
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
@@ -288,6 +292,8 @@ class DocumentUploadFinalizeView(APIView):
                 file_size=actual_file_size,
                 content_type=validated_data['content_type'],
             )
+        except serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error(f"Failed to finalize document upload: {e}")
             return Response(
@@ -527,6 +533,9 @@ class DocumentVersionUploadFinalizeView(APIView):
             validated_data['storage_key'] = validate_storage_key(
                 validated_data['storage_key'], document.organization.id
             )
+            ensure_storage_key_not_claimed(
+                validated_data['storage_key'], document.organization.id
+            )
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
@@ -564,6 +573,8 @@ class DocumentVersionUploadFinalizeView(APIView):
                 file_size=actual_file_size,
                 content_type=validated_data['content_type'],
             )
+        except serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error(f"Failed to finalize document version upload for doc {document_id}: {e}")
             return Response(

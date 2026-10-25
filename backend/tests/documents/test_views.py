@@ -2752,6 +2752,53 @@ class TestDocumentUploadConstraints:
         new_version = doc.versions.get(version_number=2)
         assert new_version.file_size == 4096
 
+    @patch('documents.views.fileserver_client.get_file_info', return_value={'exists': True, 'size': 1024})
+    def test_upload_finalize_rejects_already_claimed_storage_key(self, mock_get_info, api_client, user, user2, organization):
+        """Finalize must reject a storage key that has already been registered in the organization."""
+        claimed_key = f"{organization.id}/doc/claimed.pdf"
+        Document.objects.create(
+            name="Claimed.pdf",
+            organization=organization,
+            created_by=user,
+            original_storage_key=claimed_key,
+            storage_key=claimed_key,
+        )
+
+        api_client.force_authenticate(user=user2)
+        res = api_client.post('/api/v1/uploads/document/finalize/', {
+            'storage_key': claimed_key,
+            'unique_name': 'duplicate.pdf',
+            'content_type': 'application/pdf',
+        }, format='json')
+        assert res.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'This storage key has already been registered.' in res.data['detail']
+
+    @patch('documents.views.fileserver_client.get_file_info', return_value={'exists': True, 'size': 1024})
+    def test_version_upload_finalize_rejects_already_claimed_storage_key(self, mock_get_info, api_client, user, organization):
+        """Version finalize must reject a storage key that is already referenced in the organization."""
+        claimed_key = f"{organization.id}/doc/version_claimed.pdf"
+        Document.objects.create(
+            name="Doc1.pdf",
+            organization=organization,
+            created_by=user,
+            original_storage_key=claimed_key,
+            storage_key=claimed_key,
+        )
+        doc2 = Document.objects.create(
+            name="Doc2.pdf",
+            organization=organization,
+            created_by=user,
+        )
+        DocumentVersion.objects.create(document=doc2, version_number=1, is_primary=True)
+
+        api_client.force_authenticate(user=user)
+        res = api_client.post(f'/api/v1/uploads/document/{doc2.id}/versions/finalize/', {
+            'storage_key': claimed_key,
+            'content_type': 'application/pdf',
+        }, format='json')
+        assert res.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'This storage key has already been registered.' in res.data['detail']
+
     def test_patch_document_ignores_read_only_fields_and_preserves_folder(self, api_client, user, user2, organization):
         """DocumentViewSet PATCH ignores read-only attributes and preserves folder structure."""
         api_client.force_authenticate(user=user)

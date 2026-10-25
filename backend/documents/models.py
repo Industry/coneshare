@@ -151,8 +151,8 @@ class Document(BaseModel):
         default='processing'
     )
     status_message = models.CharField(max_length=255, blank=True, null=True)
-    storage_key = models.CharField(max_length=1024, blank=True, null=True)
-    original_storage_key = models.CharField(max_length=1024, blank=True, null=True)
+    storage_key = models.CharField(max_length=1024, blank=True, null=True, db_index=True)
+    original_storage_key = models.CharField(max_length=1024, blank=True, null=True, db_index=True)
     type = models.CharField(max_length=20)
     content_type = models.CharField(max_length=255)
     num_pages = models.IntegerField(null=True, blank=True)
@@ -295,8 +295,8 @@ class DocumentVersion(BaseModel):
 
     document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name='versions')
     version_number = models.IntegerField()
-    storage_key = models.CharField(max_length=1024, blank=True)  # Key for the file to be processed into pages (e.g., a PDF).
-    original_storage_key = models.CharField(max_length=1024)     # Key for the original, untouched uploaded file (e.g., .docx, .pdf).
+    storage_key = models.CharField(max_length=1024, blank=True, db_index=True)  # Key for the file to be processed into pages (e.g., a PDF).
+    original_storage_key = models.CharField(max_length=1024, db_index=True)     # Key for the original, untouched uploaded file (e.g., .docx, .pdf).
     content_type = models.CharField(max_length=255, blank=True)
     type = models.CharField(max_length=50, blank=True)
     storage_type = models.CharField(max_length=20, blank=True)
@@ -364,7 +364,7 @@ class DocumentPage(BaseModel):
     """
     document_version = models.ForeignKey(DocumentVersion, on_delete=models.CASCADE, related_name='pages')
     page_number = models.IntegerField()
-    storage_key = models.CharField(max_length=1024)
+    storage_key = models.CharField(max_length=1024, db_index=True)
     storage_type = models.CharField(max_length=20, blank=True)
     page_links = models.JSONField(default=dict, blank=True)
 

@@ -22,6 +22,8 @@ from documents.services import (
     _get_unique_document_name,
     generate_storage_key,
     validate_storage_key,
+    ensure_storage_key_not_claimed,
+    safe_delete_storage_file,
 )
 
 from documents.fileserver import fileserver_client
@@ -317,6 +319,9 @@ class FileRequestUploadFinalizeView(APIView):
             validated_data['storage_key'] = validate_storage_key(
                 validated_data['storage_key'], file_request.created_by.organization.id
             )
+            ensure_storage_key_not_claimed(
+                validated_data['storage_key'], file_request.created_by.organization.id
+            )
         except serializers.ValidationError as e:
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
@@ -452,10 +457,14 @@ class FileRequestUploadFinalizeView(APIView):
                 scanner_message=str(e),
             )
             try:
-                fileserver_client.delete_file(validated_data['storage_key'])
-                threat_event.storage_cleanup_status = SecurityThreatEvent.StorageCleanupStatus.DELETED
-                threat_event.storage_cleanup_at = timezone.now()
-                threat_event.save(update_fields=['storage_cleanup_status', 'storage_cleanup_at'])
+                deleted = safe_delete_storage_file(validated_data['storage_key'], file_request.created_by.organization.id)
+                if deleted:
+                    threat_event.storage_cleanup_status = SecurityThreatEvent.StorageCleanupStatus.DELETED
+                    threat_event.storage_cleanup_at = timezone.now()
+                else:
+                    threat_event.storage_cleanup_status = SecurityThreatEvent.StorageCleanupStatus.FAILED
+                    threat_event.storage_cleanup_error = "File deletion skipped: key is referenced by another document."
+                threat_event.save(update_fields=['storage_cleanup_status', 'storage_cleanup_at', 'storage_cleanup_error'])
             except Exception as cleanup_error:
                 logger.error(
                     "Failed to delete malicious uploaded object for file request %s storage_key=%s: %s",
@@ -489,10 +498,14 @@ class FileRequestUploadFinalizeView(APIView):
                 scanner_message=str(e),
             )
             try:
-                fileserver_client.delete_file(validated_data['storage_key'])
-                threat_event.storage_cleanup_status = SecurityThreatEvent.StorageCleanupStatus.DELETED
-                threat_event.storage_cleanup_at = timezone.now()
-                threat_event.save(update_fields=['storage_cleanup_status', 'storage_cleanup_at'])
+                deleted = safe_delete_storage_file(validated_data['storage_key'], file_request.created_by.organization.id)
+                if deleted:
+                    threat_event.storage_cleanup_status = SecurityThreatEvent.StorageCleanupStatus.DELETED
+                    threat_event.storage_cleanup_at = timezone.now()
+                else:
+                    threat_event.storage_cleanup_status = SecurityThreatEvent.StorageCleanupStatus.FAILED
+                    threat_event.storage_cleanup_error = "File deletion skipped: key is referenced by another document."
+                threat_event.save(update_fields=['storage_cleanup_status', 'storage_cleanup_at', 'storage_cleanup_error'])
             except Exception as cleanup_error:
                 logger.error(
                     "Failed to delete unscanned uploaded object for file request %s storage_key=%s: %s",

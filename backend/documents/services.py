@@ -6,7 +6,7 @@ import mimetypes
 import logging
 import requests
 import uuid
-from typing import Optional
+from typing import Optional, List, Set, Union
 from django.utils import timezone
 
 from django.conf import settings
@@ -225,8 +225,128 @@ def validate_storage_key(storage_key: str, organization_id) -> str:
 
     return normalized_key
 
-def create_document_from_upload(
 
+def is_storage_key_referenced(
+    storage_key: str,
+    organization_id,
+    exclude_document_ids: Optional[Union[List, Set]] = None
+) -> bool:
+    """
+    Checks if a storage key is referenced by any document, version, or rendered page
+    within the organization, optionally excluding specific document IDs.
+    """
+    if not storage_key or not organization_id:
+        return False
+
+    doc_qs = Document.objects.filter(
+        Q(organization_id=organization_id) &
+        (Q(original_storage_key=storage_key) | Q(storage_key=storage_key))
+    )
+    version_qs = DocumentVersion.objects.filter(
+        Q(document__organization_id=organization_id) &
+        (Q(original_storage_key=storage_key) | Q(storage_key=storage_key))
+    )
+    page_qs = DocumentPage.objects.filter(
+        document_version__document__organization_id=organization_id,
+        storage_key=storage_key
+    )
+
+    if exclude_document_ids:
+        doc_qs = doc_qs.exclude(pk__in=exclude_document_ids)
+        version_qs = version_qs.exclude(document_id__in=exclude_document_ids)
+        page_qs = page_qs.exclude(document_version__document_id__in=exclude_document_ids)
+
+    return doc_qs.exists() or version_qs.exists() or page_qs.exists()
+
+
+def ensure_storage_key_not_claimed(storage_key: str, organization_id) -> None:
+    """
+    Validates that a storage key is not already registered or referenced by any
+    existing document, version, or rendered page within the organization.
+    """
+    if is_storage_key_referenced(storage_key, organization_id):
+        raise serializers.ValidationError({"detail": "This storage key has already been registered."})
+
+
+def filter_unreferenced_storage_keys(
+    storage_keys: Set[str],
+    organization_id,
+    exclude_document_ids: Optional[Union[List, Set]] = None
+) -> Set[str]:
+    """
+    Filters a set of candidate storage keys, returning only those not referenced
+    by any other document, version, or page in the organization.
+    Executes batched queries to avoid N+1 query patterns.
+    """
+    if not storage_keys or not organization_id:
+        return set()
+
+    referenced_keys = set()
+    chunk_size = 500
+    key_list = list(storage_keys)
+
+    for i in range(0, len(key_list), chunk_size):
+        chunk = key_list[i:i + chunk_size]
+
+        doc_qs = Document.objects.filter(
+            Q(organization_id=organization_id) &
+            (Q(original_storage_key__in=chunk) | Q(storage_key__in=chunk))
+        )
+        version_qs = DocumentVersion.objects.filter(
+            Q(document__organization_id=organization_id) &
+            (Q(original_storage_key__in=chunk) | Q(storage_key__in=chunk))
+        )
+        page_qs = DocumentPage.objects.filter(
+            document_version__document__organization_id=organization_id,
+            storage_key__in=chunk
+        )
+
+        if exclude_document_ids:
+            doc_qs = doc_qs.exclude(pk__in=exclude_document_ids)
+            version_qs = version_qs.exclude(document_id__in=exclude_document_ids)
+            page_qs = page_qs.exclude(document_version__document_id__in=exclude_document_ids)
+
+        for orig_key, skey in doc_qs.values_list('original_storage_key', 'storage_key'):
+            if orig_key:
+                referenced_keys.add(orig_key)
+            if skey:
+                referenced_keys.add(skey)
+
+        for orig_key, skey in version_qs.values_list('original_storage_key', 'storage_key'):
+            if orig_key:
+                referenced_keys.add(orig_key)
+            if skey:
+                referenced_keys.add(skey)
+
+        for (pkey,) in page_qs.values_list('storage_key'):
+            if pkey:
+                referenced_keys.add(pkey)
+
+    return storage_keys - referenced_keys
+
+
+def safe_delete_storage_file(
+    storage_key: str,
+    organization_id,
+    exclude_document_ids: Optional[Union[List, Set]] = None
+) -> bool:
+    """
+    Safely deletes a physical file from the storage server after confirming that
+    no other document records within the organization reference it.
+    Returns True if deletion was attempted, or False if skipped due to active references.
+    """
+    if is_storage_key_referenced(storage_key, organization_id, exclude_document_ids=exclude_document_ids):
+        logger.warning(
+            "Skipped physical file deletion for %s: key is referenced by other documents in organization %s",
+            storage_key, organization_id
+        )
+        return False
+
+    fileserver_client.delete_file(storage_key)
+    return True
+
+
+def create_document_from_upload(
     requesting_user: User,
     folder: Folder,
     storage_key: str,
@@ -239,6 +359,8 @@ def create_document_from_upload(
     Creates document records from data about a file already uploaded to the
     file server, and routes it for processing.
     """
+    ensure_storage_key_not_claimed(storage_key, requesting_user.organization.id)
+
     if folder is None:
         folder, _ = Folder.objects.get_or_create(
             organization=requesting_user.organization,
@@ -332,7 +454,11 @@ def delete_folder_and_contents(folder: Folder):
             storage_keys_to_delete.add(page.storage_key)
 
     deletion_errors = []
-    for key in storage_keys_to_delete:
+    exclude_doc_ids = list(documents_to_delete.values_list('pk', flat=True))
+    keys_to_physically_delete = filter_unreferenced_storage_keys(
+        storage_keys_to_delete, folder.organization_id, exclude_document_ids=exclude_doc_ids
+    )
+    for key in keys_to_physically_delete:
         try:
             fileserver_client.delete_file(key)
         except APIException as e:
@@ -376,7 +502,7 @@ def delete_document_and_files(document: Document, is_vault: Optional[bool] = Non
     deletion_errors = []
     for key in storage_keys_to_delete:
         try:
-            fileserver_client.delete_file(key)
+            safe_delete_storage_file(key, document.organization_id, exclude_document_ids=[document.pk])
         except APIException as e:
             logger.error(f"Failed to delete file {key} from file server: {e}")
             deletion_errors.append(key)
@@ -518,6 +644,8 @@ def create_new_document_version(
     Handles creating a new version of a document, routing to the correct
     processing task based on file type and size.
     """
+    ensure_storage_key_not_claimed(storage_key, document.organization_id)
+
     # 1. Find the current version number
     latest_version = document.versions.order_by('-version_number').first()
     new_version_number = (latest_version.version_number if latest_version else 0) + 1
