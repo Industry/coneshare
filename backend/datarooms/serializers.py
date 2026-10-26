@@ -355,8 +355,10 @@ class DataroomFolderSerializer(serializers.ModelSerializer):
         folder_parent_map = self.context.get('dataroom_folder_parent_map')
         if folder_parent_map:
             ancestors = []
+            visited = set()
             node_id = str(obj.parent_id) if obj.parent_id else None
-            while node_id:
+            while node_id and node_id not in visited:
+                visited.add(node_id)
                 parent = folder_parent_map.get(node_id)
                 if not parent:
                     break
@@ -366,11 +368,50 @@ class DataroomFolderSerializer(serializers.ModelSerializer):
             return list(reversed(ancestors))
 
         ancestors = []
+        visited = set()
         parent = obj.parent
-        while parent:
+        while parent and str(parent.id) not in visited:
+            visited.add(str(parent.id))
             ancestors.append({'id': parent.id, 'name': parent.name})
             parent = parent.parent
         return list(reversed(ancestors))
+
+    def validate(self, data):
+        # 1. On update: reject changing dataroom
+        if self.instance and 'dataroom' in data and data['dataroom'] != self.instance.dataroom:
+            raise serializers.ValidationError({
+                'dataroom': "Changing the dataroom of an existing folder is not allowed."
+            })
+
+        target_dataroom = self.instance.dataroom if self.instance else data.get('dataroom')
+        parent = data.get('parent') if 'parent' in data else (self.instance.parent if self.instance else None)
+
+        # 2. Require parent folder to belong to the target dataroom
+        if parent:
+            if target_dataroom and parent.dataroom_id != target_dataroom.id:
+                raise serializers.ValidationError({
+                    'parent': "Parent folder must belong to the same dataroom."
+                })
+
+        # 3. Hierarchy cycle prevention on update
+        if self.instance and 'parent' in data:
+            new_parent = data.get('parent')
+            if new_parent:
+                if str(new_parent.id) == str(self.instance.id):
+                    raise serializers.ValidationError({
+                        'parent': "A folder cannot be its own parent."
+                    })
+                visited = {str(self.instance.id)}
+                curr = new_parent
+                while curr:
+                    if str(curr.id) in visited:
+                        raise serializers.ValidationError({
+                            'parent': "Cannot move a folder into itself or one of its subfolders."
+                        })
+                    visited.add(str(curr.id))
+                    curr = curr.parent
+
+        return data
 
 
 class DataroomDocumentSerializer(serializers.ModelSerializer):

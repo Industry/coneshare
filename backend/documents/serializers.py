@@ -53,8 +53,12 @@ class FolderSerializer(serializers.ModelSerializer):
         #    Using a library like django-mptt which is designed to handle hierarchical data efficiently.
 
         ancestors = []
+        visited = set()
         parent = obj.parent
         while parent and parent.name != '__root__':
+            if str(parent.id) in visited:
+                break
+            visited.add(str(parent.id))
             ancestors.append({'id': str(parent.id), 'name': parent.name})
             parent = parent.parent
         return list(reversed(ancestors))
@@ -62,7 +66,7 @@ class FolderSerializer(serializers.ModelSerializer):
     def validate(self, data):
         """
         Manually enforce uniqueness for a folder's name within its parent,
-        accounting for the invisible __root__ folder.
+        accounting for the invisible __root__ folder, and prevent cycle loops.
         """
         request = self.context.get('request')
         if not request or not hasattr(request, 'user'):
@@ -76,6 +80,24 @@ class FolderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'name': _("This folder name is reserved by the system.")
             })
+
+        # Prevent self-referencing or cyclic folder hierarchy
+        if self.instance and 'parent' in data:
+            new_parent = data.get('parent')
+            if new_parent:
+                if str(new_parent.id) == str(self.instance.id):
+                    raise serializers.ValidationError({
+                        'parent': "A folder cannot be its own parent."
+                    })
+                visited = {str(self.instance.id)}
+                curr = new_parent
+                while curr:
+                    if str(curr.id) in visited:
+                        raise serializers.ValidationError({
+                            'parent': "Cannot move a folder into itself or one of its subfolders."
+                        })
+                    visited.add(str(curr.id))
+                    curr = curr.parent
 
         # On update, parent might not be in payload. We get it from instance.
         parent = data.get('parent', self.instance.parent if self.instance else None)

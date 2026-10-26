@@ -2942,5 +2942,31 @@ class TestDocumentUploadConstraints:
         assert doc.folder == root
 
 
+@pytest.mark.django_db
+class TestFolderHierarchyBoundary:
+    """Tests for folder hierarchy cycle prevention and parent validation."""
+
+    def test_folder_cannot_set_parent_to_self(self, api_client, user, organization):
+        from documents.models import Folder
+        root = Folder.objects.get_root_for_org(organization)
+        f1 = Folder.objects.create(name="Folder1", created_by=user, organization=organization, parent=root)
+
+        api_client.force_authenticate(user=user)
+        resp = api_client.patch(f'/api/v1/folders/{f1.id}/', {'parent': str(f1.id)}, format='json')
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_folder_cannot_set_parent_to_descendant(self, api_client, user, organization):
+        from documents.models import Folder
+        root = Folder.objects.get_root_for_org(organization)
+        f1 = Folder.objects.create(name="Folder1", created_by=user, organization=organization, parent=root)
+        f2 = Folder.objects.create(name="Folder2", created_by=user, organization=organization, parent=f1)
+        f3 = Folder.objects.create(name="Folder3", created_by=user, organization=organization, parent=f2)
+
+        api_client.force_authenticate(user=user)
+        resp = api_client.patch(f'/api/v1/folders/{f1.id}/', {'parent': str(f3.id)}, format='json')
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+
+
 
 
