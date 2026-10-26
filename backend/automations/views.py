@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 from core.pagination import StandardResultsSetPagination
+from core.permissions import IsAdminOrReadOnly
 
 from .models import (AutomationAssignment, AutomationDelivery, AutomationDestination,
                      AutomationRule)
@@ -18,11 +19,11 @@ class AutomationDestinationViewSet(viewsets.ModelViewSet):
     # Dummy queryset for OpenAPI schema generation to infer lookup field type without executing get_queryset().
     queryset = AutomationDestination.objects.none()
     serializer_class = AutomationDestinationSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrReadOnly]
 
     def get_queryset(self):
         return AutomationDestination.objects.filter(
             organization=self.request.user.organization,
-            created_by=self.request.user,
         )
 
     def perform_create(self, serializer):

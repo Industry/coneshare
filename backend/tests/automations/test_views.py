@@ -11,8 +11,8 @@ pytestmark = pytest.mark.django_db
 
 
 class TestAutomationDestinationViewSet:
-    def test_create_destination_sets_org_and_creator(self, api_client, user):
-        response = api_client.post(
+    def test_create_destination_by_admin_sets_org_and_creator(self, admin_api_client, admin_user):
+        response = admin_api_client.post(
             '/api/v1/automation-destinations/',
             {
                 'name': 'Primary Webhook',
@@ -28,12 +28,72 @@ class TestAutomationDestinationViewSet:
 
         assert response.status_code == status.HTTP_201_CREATED
         destination = AutomationDestination.objects.get(id=response.data['id'])
-        assert destination.organization == user.organization
-        assert destination.created_by == user
+        assert destination.organization == admin_user.organization
+        assert destination.created_by == admin_user
         assert destination.destination_type == 'webhook'
 
-    def test_create_email_destination_manually_fails(self, api_client):
+    def test_create_destination_by_non_admin_is_forbidden(self, api_client):
         response = api_client.post(
+            '/api/v1/automation-destinations/',
+            {
+                'name': 'Unauthorized Webhook',
+                'destination_type': 'webhook',
+                'endpoint_url': 'https://example.com/webhook',
+                'http_method': 'POST',
+                'is_active': True,
+            },
+            format='json',
+        )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_staff_without_admin_role_cannot_mutate_destination(self, organization):
+        staff_member = User.objects.create_user(
+            username='staff-member@example.com',
+            email='staff-member@example.com',
+            password='password',
+            role='member',
+            is_staff=True,
+            organization=organization,
+        )
+        from rest_framework.test import APIClient
+        client = APIClient()
+        client.force_authenticate(user=staff_member)
+
+        response = client.post(
+            '/api/v1/automation-destinations/',
+            {
+                'name': 'Staff Created Webhook',
+                'destination_type': 'webhook',
+                'endpoint_url': 'https://example.com/webhook',
+                'http_method': 'POST',
+                'is_active': True,
+            },
+            format='json',
+        )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_headers_hidden_for_non_admin_member(self, api_client, admin_api_client, user):
+        destination = AutomationDestination.objects.create(
+            organization=user.organization,
+            created_by=user,
+            name='Secret Header Webhook',
+            destination_type='webhook',
+            endpoint_url='https://example.com/webhook',
+            headers={'Authorization': 'Bearer secret-token-123'},
+        )
+
+        # Non-admin member sees empty headers
+        member_resp = api_client.get(f'/api/v1/automation-destinations/{destination.id}/')
+        assert member_resp.status_code == status.HTTP_200_OK
+        assert member_resp.data['headers'] == {}
+
+        # Admin sees full headers
+        admin_resp = admin_api_client.get(f'/api/v1/automation-destinations/{destination.id}/')
+        assert admin_resp.status_code == status.HTTP_200_OK
+        assert admin_resp.data['headers'] == {'Authorization': 'Bearer secret-token-123'}
+
+    def test_create_email_destination_manually_fails(self, admin_api_client):
+        response = admin_api_client.post(
             '/api/v1/automation-destinations/',
             {
                 'name': 'My Email Destination',
@@ -48,7 +108,7 @@ class TestAutomationDestinationViewSet:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert 'Email destination type cannot be created manually' in str(response.data)
 
-    def test_list_destinations_is_scoped_to_request_user(self, api_client, user, user2):
+    def test_list_destinations_is_scoped_to_organization(self, api_client, user, user2):
         own_destination = AutomationDestination.objects.create(
             organization=user.organization,
             created_by=user,
@@ -56,7 +116,7 @@ class TestAutomationDestinationViewSet:
             destination_type='webhook',
             endpoint_url='https://example.com/a',
         )
-        AutomationDestination.objects.create(
+        other_user_destination = AutomationDestination.objects.create(
             organization=user.organization,
             created_by=user2,
             name='Other User Destination',
@@ -69,13 +129,14 @@ class TestAutomationDestinationViewSet:
         assert response.status_code == status.HTTP_200_OK
         ids = {item['id'] for item in response.data}
         assert own_destination.id in ids
-        assert len(ids) == 1
+        assert other_user_destination.id in ids
+        assert len(ids) == 2
 
-    def test_create_rule_rejects_destination_owned_by_other_user_in_same_org(self, api_client, user, user2):
+    def test_create_rule_allows_destination_in_same_org(self, api_client, user, user2):
         foreign_owned_destination = AutomationDestination.objects.create(
             organization=user.organization,
             created_by=user2,
-            name='Other User Destination',
+            name='Admin Configured Destination',
             destination_type='webhook',
             endpoint_url='https://example.com/other-user',
         )
@@ -92,10 +153,40 @@ class TestAutomationDestinationViewSet:
             format='json',
         )
 
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert 'must be owned by you' in str(response.data).lower()
+        assert response.status_code == status.HTTP_201_CREATED
 
-    def test_detail_destination_of_other_user_returns_404(self, api_client, user, user2):
+    def test_create_rule_rejects_destination_in_other_org(self, api_client, user):
+        other_org = Organization.objects.create(name='Other Org')
+        other_user = User.objects.create_user(
+            username='other-user@example.com',
+            email='other-user@example.com',
+            password='password',
+            organization=other_org,
+        )
+        foreign_org_dest = AutomationDestination.objects.create(
+            organization=other_org,
+            created_by=other_user,
+            name='Foreign Org Dest',
+            destination_type='webhook',
+            endpoint_url='https://example.com/foreign',
+        )
+
+        response = api_client.post(
+            '/api/v1/automations/',
+            {
+                'name': 'Cross Org Rule',
+                'scope_type': 'global',
+                'subscribed_events': ['document_viewed'],
+                'actions': [{'type': 'notify_destination'}],
+                'destinations': [str(foreign_org_dest.id)],
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'outside your organization' in str(response.data).lower()
+
+    def test_detail_destination_in_same_org_returns_200(self, api_client, user, user2):
         other_user_destination = AutomationDestination.objects.create(
             organization=user.organization,
             created_by=user2,
@@ -106,24 +197,74 @@ class TestAutomationDestinationViewSet:
 
         response = api_client.get(f'/api/v1/automation-destinations/{other_user_destination.id}/')
 
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['id'] == str(other_user_destination.id)
+
+    def test_detail_destination_in_other_org_returns_404(self, api_client, user):
+        other_org = Organization.objects.create(name='Other Org')
+        other_user = User.objects.create_user(
+            username='foreign@example.com',
+            email='foreign@example.com',
+            password='password',
+            organization=other_org,
+        )
+        foreign_destination = AutomationDestination.objects.create(
+            organization=other_org,
+            created_by=other_user,
+            name='Foreign Destination',
+            destination_type='webhook',
+            endpoint_url='https://example.com/foreign',
+        )
+
+        response = api_client.get(f'/api/v1/automation-destinations/{foreign_destination.id}/')
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_update_destination_of_other_user_returns_404(self, api_client, user, user2):
-        other_user_destination = AutomationDestination.objects.create(
+    def test_update_destination_by_non_admin_is_forbidden(self, api_client, user):
+        destination = AutomationDestination.objects.create(
             organization=user.organization,
-            created_by=user2,
-            name='Other User Destination',
+            created_by=user,
+            name='Member Destination',
             destination_type='webhook',
-            endpoint_url='https://example.com/other-user',
+            endpoint_url='https://example.com/dest',
         )
 
         response = api_client.patch(
-            f'/api/v1/automation-destinations/{other_user_destination.id}/',
+            f'/api/v1/automation-destinations/{destination.id}/',
             {'name': 'Hacked'},
             format='json',
         )
 
-        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_update_destination_by_admin_succeeds(self, admin_api_client, admin_user):
+        destination = AutomationDestination.objects.create(
+            organization=admin_user.organization,
+            created_by=admin_user,
+            name='Admin Destination',
+            destination_type='webhook',
+            endpoint_url='https://example.com/admin-dest',
+        )
+
+        response = admin_api_client.patch(
+            f'/api/v1/automation-destinations/{destination.id}/',
+            {'name': 'Updated Destination'},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['name'] == 'Updated Destination'
+
+    def test_delete_destination_by_non_admin_is_forbidden(self, api_client, user):
+        destination = AutomationDestination.objects.create(
+            organization=user.organization,
+            created_by=user,
+            name='Member Destination',
+            destination_type='webhook',
+            endpoint_url='https://example.com/dest',
+        )
+
+        response = api_client.delete(f'/api/v1/automation-destinations/{destination.id}/')
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_list_destinations_hides_other_org(self, api_client, user):
         other_org = Organization.objects.create(name='Other Org')
@@ -147,7 +288,7 @@ class TestAutomationDestinationViewSet:
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 0
 
-    def test_create_destination_allows_duplicate_name_in_same_org(self, api_client):
+    def test_create_destination_allows_duplicate_name_in_same_org(self, admin_api_client):
         payload = {
             'name': 'Shared Name',
             'destination_type': 'webhook',
@@ -156,14 +297,14 @@ class TestAutomationDestinationViewSet:
             'headers': {},
             'is_active': True,
         }
-        first = api_client.post('/api/v1/automation-destinations/', payload, format='json')
+        first = admin_api_client.post('/api/v1/automation-destinations/', payload, format='json')
         assert first.status_code == status.HTTP_201_CREATED
 
         second_payload = {
             **payload,
             'endpoint_url': 'https://example.com/webhook-b',
         }
-        second = api_client.post('/api/v1/automation-destinations/', second_payload, format='json')
+        second = admin_api_client.post('/api/v1/automation-destinations/', second_payload, format='json')
         assert second.status_code == status.HTTP_201_CREATED
         assert second.data['name'] == payload['name']
 
