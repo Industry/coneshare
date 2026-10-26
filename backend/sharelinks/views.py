@@ -805,6 +805,7 @@ class ShareLinkViewDataView(APIView):
                         if session.user == session.share_link.created_by:
                             is_preview = True
                             request.session['preview_owner_email'] = session.user.email
+                            request.session['preview_link_id'] = str(session.share_link.id)
                             
                             # Authorize the link in the session for page requests
                             authorized_links = request.session.get('authorized_share_links', {})
@@ -2611,6 +2612,7 @@ class ShareLinkFileDownloadView(APIView):
                         if session.user == session.share_link.created_by:
                             is_preview = True
                             request.session['preview_owner_email'] = session.user.email
+                            request.session['preview_link_id'] = str(session.share_link.id)
                             session.delete()
             except PreviewSession.DoesNotExist:
                 pass
@@ -2866,6 +2868,7 @@ class DataroomFolderDownloadView(APIView):
                         if session.user == session.share_link.created_by:
                             is_preview = True
                             request.session['preview_owner_email'] = session.user.email
+                            request.session['preview_link_id'] = str(session.share_link.id)
                             session.delete()
             except PreviewSession.DoesNotExist:
                 pass
@@ -2962,16 +2965,34 @@ class DataroomFolderDownloadView(APIView):
 
 
 @extend_schema(tags=['sharelinks'])
-class ViewerViewSet(viewsets.ModelViewSet):
+class ViewerViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Viewer.objects.all()
     serializer_class = ViewerSerializer
 
     def get_queryset(self):
-        return Viewer.objects.filter(organization=self.request.user.organization)
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return Viewer.objects.none()
+
+        queryset = Viewer.objects.filter(organization=user.organization)
+        if getattr(user, 'role', '') == 'admin':
+            return queryset
+
+        accessible_datarooms = get_dataroom_queryset_for_user(user)
+        base_filter = (
+            Q(view_sessions__share_link__document__isnull=False, view_sessions__share_link__created_by=user) |
+            Q(view_sessions__share_link__dataroom__in=accessible_datarooms)
+        )
+        return queryset.filter(base_filter).distinct()
 
 
 @extend_schema(tags=['sharelinks'])
-class ViewSessionViewSet(viewsets.ModelViewSet):
+class ViewSessionViewSet(
+    mixins.CreateModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.ListModelMixin,
+    viewsets.GenericViewSet
+):
     queryset = ViewSession.objects.all()
     serializer_class = ViewSessionSerializer
 
@@ -3153,24 +3174,67 @@ class ViewSessionViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def get_queryset(self):
-        org = self.request.user.organization
-        return ViewSession.objects.filter(
-            Q(share_link__document__organization=org) | Q(share_link__dataroom__organization=org)
-        ).prefetch_related(
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return ViewSession.objects.none()
+
+        accessible_datarooms = get_dataroom_queryset_for_user(user)
+        base_filter = Q(share_link__document__isnull=False, share_link__created_by=user) | Q(share_link__dataroom__in=accessible_datarooms)
+        if getattr(user, 'role', '') == 'admin' and getattr(user, 'organization_id', None):
+            base_filter |= Q(share_link__document__organization_id=user.organization_id)
+
+        return ViewSession.objects.filter(base_filter).distinct().prefetch_related(
             'page_views',
             'link_clicks',
             'dataroom_visits__page_views',
             'dataroom_visits__link_clicks'
         )
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        share_link = serializer.validated_data.get('share_link')
+        if not share_link:
+            raise serializers.ValidationError({'share_link': 'This field is required.'})
+
+        if not share_link.is_active or (share_link.document and share_link.document.deleted_at is not None):
+            return Response({'detail': 'This link is not available.'}, status=status.HTTP_404_NOT_FOUND)
+
+        preview_link_id = request.session.get('preview_link_id')
+        is_preview = bool(preview_link_id and str(preview_link_id) == str(share_link.id))
+        preview_token = request.query_params.get('previewToken') if hasattr(request, 'query_params') else None
+        if not is_preview and preview_token:
+            is_preview = PreviewSession.objects.filter(
+                share_link=share_link, token=preview_token
+            ).exclude(expires_at__lt=timezone.now()).exists()
+
+        auth_error, auth_status = _verify_share_link_session_authorization(
+            share_link,
+            request,
+            is_preview=is_preview,
+            require_session=False,
+        )
+        if auth_error:
+            return auth_error
+
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
     def perform_create(self, serializer):
         ip_address = get_client_ip(self.request)
         user_agent = self.request.META.get('HTTP_USER_AGENT', '')[:255]
 
-        # Check for owner preview first, which takes precedence.
-        preview_owner_email = self.request.session.pop('preview_owner_email', None)
-
         share_link = serializer.validated_data.get('share_link')
+
+        # Check for owner preview first, which takes precedence and is strictly bound to this link.
+        preview_owner_email = None
+        preview_link_id = self.request.session.get('preview_link_id')
+        if preview_link_id and share_link and str(preview_link_id) == str(share_link.id):
+            preview_owner_email = self.request.session.pop('preview_owner_email', None)
+            self.request.session.pop('preview_link_id', None)
+
         viewer_email = ''
         if preview_owner_email:
             viewer_email = preview_owner_email

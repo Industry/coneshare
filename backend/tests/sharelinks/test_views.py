@@ -3865,3 +3865,159 @@ class TestDataroomFolderDownloadView:
         owner_resp_get = api_client.get(f'/api/v1/share-links/{link.id}/')
         assert owner_resp_get.status_code == status.HTTP_200_OK
         assert owner_resp_get.data['name'] == "Collab Dataroom Link"
+
+
+@pytest.mark.django_db
+class TestViewSessionAndViewerAccessControl:
+    """Behavioral tests for view session and viewer access boundaries and field constraints."""
+
+    def test_view_session_list_and_detail_scoped_to_accessible_share_links(self, api_client, user, user2, document_factory):
+        doc1 = document_factory(created_by=user, name="Doc1.pdf")
+        link1 = ShareLink.objects.create(document=doc1, created_by=user, name="User1 Link")
+        session1 = ViewSession.objects.create(share_link=link1)
+
+        doc2 = document_factory(created_by=user2, name="Doc2.pdf")
+        link2 = ShareLink.objects.create(document=doc2, created_by=user2, name="User2 Link")
+        session2 = ViewSession.objects.create(share_link=link2)
+
+        api_client.force_authenticate(user=user2)
+        resp = api_client.get('/api/v1/view-sessions/')
+        assert resp.status_code == status.HTTP_200_OK
+        results = resp.data.get('results', resp.data) if isinstance(resp.data, dict) else resp.data
+        session_ids = [str(item['id']) for item in results]
+        assert str(session2.id) in session_ids
+        assert str(session1.id) not in session_ids
+
+        detail_resp = api_client.get(f'/api/v1/view-sessions/{session1.id}/')
+        assert detail_resp.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_view_session_mutation_actions_disallowed(self, api_client, user, share_link):
+        session = ViewSession.objects.create(share_link=share_link)
+        api_client.force_authenticate(user=user)
+
+        patch_resp = api_client.patch(f'/api/v1/view-sessions/{session.id}/', {'duration_seconds': 500}, format='json')
+        assert patch_resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+        put_resp = api_client.put(f'/api/v1/view-sessions/{session.id}/', {'duration_seconds': 500}, format='json')
+        assert put_resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+        delete_resp = api_client.delete(f'/api/v1/view-sessions/{session.id}/')
+        assert delete_resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+    def test_view_session_creation_rejects_client_supplied_metrics(self, public_client, share_link):
+        payload = {
+            'share_link': str(share_link.id),
+            'duration_seconds': 9999,
+            'completion_rate': 88.5,
+        }
+        resp = public_client.post('/api/v1/view-sessions/', payload, format='json')
+        assert resp.status_code == status.HTTP_201_CREATED
+
+        session = ViewSession.objects.get(id=resp.data['id'])
+        assert session.duration_seconds is None or session.duration_seconds == 0
+        assert session.completion_rate is None or session.completion_rate == 0.0
+
+    def test_view_session_creation_requires_active_unexpired_link_and_gate_verification(self, public_client, user, document):
+        # 1. Expired link should be rejected
+        expired_link = ShareLink.objects.create(
+            document=document,
+            created_by=user,
+            expires_at=timezone.now() - timedelta(days=1),
+        )
+        resp_expired = public_client.post('/api/v1/view-sessions/', {'share_link': str(expired_link.id)}, format='json')
+        assert resp_expired.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND, status.HTTP_410_GONE]
+
+        # 2. Inactive link should be rejected
+        inactive_link = ShareLink.objects.create(
+            document=document,
+            created_by=user,
+            is_active=False,
+        )
+        resp_inactive = public_client.post('/api/v1/view-sessions/', {'share_link': str(inactive_link.id)}, format='json')
+        assert resp_inactive.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND]
+
+        # 3. Password-protected link without session gate verification should be rejected
+        protected_link = ShareLink.objects.create(
+            document=document,
+            created_by=user,
+            password='Password123!',
+        )
+        resp_protected = public_client.post('/api/v1/view-sessions/', {'share_link': str(protected_link.id)}, format='json')
+        assert resp_protected.status_code in [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN]
+
+    def test_viewer_viewset_is_read_only_and_org_scoped(self, api_client, user, organization):
+        from sharelinks.models import Viewer
+        viewer1 = Viewer.objects.create(organization=organization, email='viewer1@example.com')
+
+        api_client.force_authenticate(user=user)
+        post_resp = api_client.post('/api/v1/viewers/', {'email': 'newviewer@example.com'}, format='json')
+        assert post_resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+        del_resp = api_client.delete(f'/api/v1/viewers/{viewer1.id}/')
+        assert del_resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+        list_resp = api_client.get('/api/v1/viewers/')
+        assert list_resp.status_code == status.HTTP_200_OK
+
+    def test_preview_session_bypass_is_bound_to_link_id(self, public_client, user, document):
+        link_a = ShareLink.objects.create(document=document, created_by=user, name="Link A")
+        link_b = ShareLink.objects.create(document=document, created_by=user, name="Link B", password="Password123!")
+
+        preview = PreviewSession.objects.create(
+            share_link=link_a,
+            user=user,
+            token="valid-preview-token-link-a",
+            expires_at=timezone.now() + timedelta(minutes=5)
+        )
+
+        # Consume preview for Link A
+        resp_preview = public_client.get(f'/api/v1/links/{link_a.slug}/view-data/?previewToken={preview.token}')
+        assert resp_preview.status_code == status.HTTP_200_OK
+
+        # Session should work for Link A view session
+        resp_a = public_client.post('/api/v1/view-sessions/', {'share_link': str(link_a.id)}, format='json')
+        assert resp_a.status_code == status.HTTP_201_CREATED
+
+        # Session must NOT bypass password protection for Link B
+        resp_b = public_client.post('/api/v1/view-sessions/', {'share_link': str(link_b.id)}, format='json')
+        assert resp_b.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_viewer_serializer_rejects_missing_organization(self):
+        from rest_framework import serializers as drf_serializers
+        from sharelinks.serializers import ViewerSerializer
+        serializer = ViewerSerializer(data={'email': 'unscoped@example.com'})
+        assert serializer.is_valid()
+        with pytest.raises(drf_serializers.ValidationError):
+            serializer.save()
+
+    def test_viewer_list_scoped_to_accessible_links_for_non_admin(self, api_client, user, user2, admin_user, document_factory, organization):
+        from sharelinks.models import Viewer
+        doc1 = document_factory(created_by=user, name="Doc1.pdf")
+        link1 = ShareLink.objects.create(document=doc1, created_by=user, name="Link1")
+        viewer1 = Viewer.objects.create(organization=organization, email="viewer1@example.com")
+        ViewSession.objects.create(share_link=link1, viewer=viewer1)
+
+        doc2 = document_factory(created_by=user2, name="Doc2.pdf")
+        link2 = ShareLink.objects.create(document=doc2, created_by=user2, name="Link2")
+        viewer2 = Viewer.objects.create(organization=organization, email="viewer2@example.com")
+        ViewSession.objects.create(share_link=link2, viewer=viewer2)
+
+        # User2 (regular member) can only see viewer2
+        api_client.force_authenticate(user=user2)
+        resp2 = api_client.get('/api/v1/viewers/')
+        assert resp2.status_code == status.HTTP_200_OK
+        results2 = resp2.data.get('results', resp2.data) if isinstance(resp2.data, dict) else resp2.data
+        emails2 = [v['email'] for v in results2]
+        assert "viewer2@example.com" in emails2
+        assert "viewer1@example.com" not in emails2
+
+        # Admin user can see both viewers
+        api_client.force_authenticate(user=admin_user)
+        resp_admin = api_client.get('/api/v1/viewers/')
+        assert resp_admin.status_code == status.HTTP_200_OK
+        results_admin = resp_admin.data.get('results', resp_admin.data) if isinstance(resp_admin.data, dict) else resp_admin.data
+        emails_admin = [v['email'] for v in results_admin]
+        assert "viewer1@example.com" in emails_admin
+        assert "viewer2@example.com" in emails_admin
+
+

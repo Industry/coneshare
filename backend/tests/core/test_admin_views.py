@@ -502,14 +502,13 @@ class TestAdminUserResetPassword:
 
     def test_reset_user_password_revocation_failure_rolls_back(self, admin_api_client, user, monkeypatch):
         from rest_framework_simplejwt.tokens import RefreshToken
-        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
         RefreshToken.for_user(user)
 
-        def mock_get_or_create(*args, **kwargs):
+        def mock_blacklist_all_user_tokens(*args, **kwargs):
             raise RuntimeError("Database error during token blacklisting")
 
-        monkeypatch.setattr(BlacklistedToken.objects, 'get_or_create', mock_get_or_create)
+        monkeypatch.setattr('core.serializers.blacklist_all_user_tokens', mock_blacklist_all_user_tokens)
 
         url = f'/api/v1/admin/users/{user.id}/reset-password/'
         payload = {'password': 'BrandNewPassword2026!'}

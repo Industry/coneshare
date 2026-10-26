@@ -161,7 +161,12 @@ class ViewSessionSerializer(serializers.ModelSerializer):
             'dataroom_id', 'dataroom_name', 'ip_address', 'user_agent', 'country', 'city', 'latitude', 'longitude', 'duration_seconds',
             'completion_rate', 'viewed_at', 'page_views', 'dataroom_visits', 'link_clicks', 'is_owner_view', 'downloaded_at'
         ]
-        read_only_fields = ['id', 'viewed_at', 'ip_address', 'user_agent', 'share_link_name', 'document_id', 'document_name', 'document_type', 'dataroom_id', 'dataroom_name', 'country', 'city', 'latitude', 'longitude', 'page_views', 'dataroom_visits', 'link_clicks', 'is_owner_view', 'downloaded_at']
+        read_only_fields = [
+            'id', 'viewer', 'duration_seconds', 'completion_rate', 'viewed_at', 'ip_address', 'user_agent',
+            'share_link_name', 'document_id', 'document_name', 'document_type', 'dataroom_id', 'dataroom_name',
+            'country', 'city', 'latitude', 'longitude', 'page_views', 'dataroom_visits', 'link_clicks',
+            'is_owner_view', 'downloaded_at'
+        ]
     
     def get_is_owner_view(self, obj) -> bool:
         request = self.context.get('request')
@@ -200,8 +205,11 @@ class ViewerSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'organization', 'created_at']
 
     def create(self, validated_data):
-        # Automatically assign the default organization
-        validated_data['organization'] = Organization.objects.first()
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and getattr(request.user, 'organization', None):
+            validated_data['organization'] = request.user.organization
+        else:
+            raise serializers.ValidationError({"organization": "Organization context is required."})
         return super().create(validated_data)
 
 

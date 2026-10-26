@@ -2686,6 +2686,79 @@ class TestDataroomBannerGalleryAndBrandingViews:
         assert "Duplicate position" in res_dup_pos.data["detail"]
 
 
+@pytest.mark.django_db
+class TestDataroomFolderHierarchyAndScopeBoundary:
+    """Tests for dataroom folder hierarchy cycle prevention and scope boundary validation."""
+
+    def test_dataroom_folder_cannot_set_parent_to_self(self, api_client, user, dataroom):
+        from datarooms.models import DataroomFolder
+        df1 = DataroomFolder.objects.create(name="DF1", dataroom=dataroom, created_by=user)
+
+        api_client.force_authenticate(user=user)
+        resp = api_client.patch(f'/api/v1/dataroom-folders/{df1.id}/', {'parent': str(df1.id)}, format='json')
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_dataroom_folder_cannot_set_parent_to_descendant(self, api_client, user, dataroom):
+        from datarooms.models import DataroomFolder
+        df1 = DataroomFolder.objects.create(name="DF1", dataroom=dataroom, created_by=user)
+        df2 = DataroomFolder.objects.create(name="DF2", dataroom=dataroom, parent=df1, created_by=user)
+        df3 = DataroomFolder.objects.create(name="DF3", dataroom=dataroom, parent=df2, created_by=user)
+
+        api_client.force_authenticate(user=user)
+        resp = api_client.patch(f'/api/v1/dataroom-folders/{df1.id}/', {'parent': str(df3.id)}, format='json')
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_dataroom_folder_cannot_change_dataroom_on_update(self, api_client, user, dataroom):
+        from datarooms.models import Dataroom, DataroomFolder
+        dataroom2 = Dataroom.objects.create(name="Other Room", organization=user.organization, created_by=user)
+        df1 = DataroomFolder.objects.create(name="DF1", dataroom=dataroom, created_by=user)
+
+        api_client.force_authenticate(user=user)
+        resp = api_client.patch(f'/api/v1/dataroom-folders/{df1.id}/', {'dataroom': str(dataroom2.id)}, format='json')
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_dataroom_folder_cannot_create_with_parent_from_different_dataroom(self, api_client, user, dataroom):
+        from datarooms.models import Dataroom, DataroomFolder
+        dataroom2 = Dataroom.objects.create(name="Other Room 2", organization=user.organization, created_by=user)
+        df_other = DataroomFolder.objects.create(name="Other DF", dataroom=dataroom2, created_by=user)
+
+        api_client.force_authenticate(user=user)
+        resp = api_client.post('/api/v1/dataroom-folders/', {
+            'name': 'SubDF',
+            'dataroom': str(dataroom.id),
+            'parent': str(df_other.id),
+        }, format='json')
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_dataroom_folder_move_rejects_duplicate_sibling_name_on_parent_only_patch(self, api_client, user, dataroom):
+        # Create folder1 at root named "Documents"
+        df1 = DataroomFolder.objects.create(name="Documents", dataroom=dataroom, created_by=user)
+        # Create target_parent at root named "Archive"
+        target_parent = DataroomFolder.objects.create(name="Archive", dataroom=dataroom, created_by=user)
+        # Create sibling inside target_parent with same name "Documents"
+        DataroomFolder.objects.create(name="Documents", dataroom=dataroom, parent=target_parent, created_by=user)
+
+        api_client.force_authenticate(user=user)
+        # Move df1 into target_parent without specifying name in payload
+        resp = api_client.patch(f'/api/v1/dataroom-folders/{df1.id}/', {'parent': str(target_parent.id)}, format='json')
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'already exists' in str(resp.data)
+
+        # Non-conflicting move succeeds
+        target_empty = DataroomFolder.objects.create(name="EmptyFolder", dataroom=dataroom, created_by=user)
+        resp = api_client.patch(f'/api/v1/dataroom-folders/{df1.id}/', {'parent': str(target_empty.id)}, format='json')
+        assert resp.status_code == status.HTTP_200_OK
+
+        # Patch without changing parent or name (e.g. is_starred) succeeds
+        resp = api_client.patch(f'/api/v1/dataroom-folders/{df1.id}/', {'is_starred': True}, format='json')
+        assert resp.status_code == status.HTTP_200_OK
+        df1.refresh_from_db()
+        assert df1.is_starred is True
+
+
+
+
+
 
 
 
