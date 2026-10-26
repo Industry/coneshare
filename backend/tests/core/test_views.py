@@ -4,7 +4,9 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from core.models import Organization, UserGroup
+from core.models import APIKey, Organization, UserGroup
+from core.authentication import generate_raw_api_key
+from rest_framework_simplejwt.tokens import RefreshToken
 
 User = get_user_model()
 
@@ -86,25 +88,10 @@ def test_list_users(admin_client, admin_user, organization):
 
 
 @pytest.mark.django_db
-def test_list_groups(admin_client, organization):
-    """Ensure we can list user groups."""
-    UserGroup.objects.create(name="Developers", organization=organization)
-    url = reverse('usergroup-list')
-    response = admin_client.get(url, format='json')
-    assert response.status_code == status.HTTP_200_OK
-    assert len(response.data) == 1
-    assert response.data[0]['name'] == 'Developers'
-
-
-@pytest.mark.django_db
-def test_create_group(admin_client, organization):
-    """Ensure we can create a new user group."""
-    url = reverse('usergroup-list')
-    data = {'name': 'Admins', 'organization': organization.pk}
-    response = admin_client.post(url, data, format='json')
-    assert response.status_code == status.HTTP_201_CREATED
-    assert UserGroup.objects.count() == 1
-    assert response.data['name'] == 'Admins'
+def test_groups_endpoint_is_unmounted(admin_client):
+    """Ensure the user groups route is unmounted from public API."""
+    response = admin_client.get('/api/v1/groups/')
+    assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db
@@ -303,3 +290,135 @@ def test_public_settings_branding(api_client, organization):
     assert response.data['terms_url'] == "https://publicbrandtest.com/terms"
     assert response.data['privacy_policy_url'] == "https://publicbrandtest.com/privacy"
     assert 'brand_logo_url' in response.data
+
+
+@pytest.mark.django_db
+class TestOrganizationAccessPermissions:
+    @pytest.fixture
+    def second_org(self, db):
+        return Organization.objects.create(name="Second Organization")
+
+    def test_member_can_query_own_org_but_not_other_org(self, api_client, user, organization, second_org):
+        """A user can query their own org info, but other orgs return 404 or are excluded from list."""
+        api_client.force_authenticate(user=user)
+        # List endpoint returns only own organization
+        list_resp = api_client.get('/api/v1/organizations/')
+        assert list_resp.status_code == status.HTTP_200_OK
+        returned_ids = [item['id'] for item in list_resp.data]
+        assert organization.id in returned_ids
+        assert second_org.id not in returned_ids
+
+        # Retrieve own org succeeds
+        detail_resp = api_client.get(f'/api/v1/organizations/{organization.id}/')
+        assert detail_resp.status_code == status.HTTP_200_OK
+        assert detail_resp.data['id'] == organization.id
+
+        # Retrieve other org returns 404
+        other_resp = api_client.get(f'/api/v1/organizations/{second_org.id}/')
+        assert other_resp.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_organization_viewset_is_strictly_read_only(self, api_client, user, organization):
+        """OrganizationViewSet strictly rejects mutations with 405 Method Not Allowed."""
+        api_client.force_authenticate(user=user)
+        patch_resp = api_client.patch(f'/api/v1/organizations/{organization.id}/', {'brand_name': 'Override'}, format='json')
+        assert patch_resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+        del_resp = api_client.delete(f'/api/v1/organizations/{organization.id}/')
+        assert del_resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+        post_resp = api_client.post('/api/v1/organizations/', {'name': 'New Org'}, format='json')
+        assert post_resp.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+
+@pytest.mark.django_db
+class TestAuthEndpointKeyRejection:
+    def test_set_password_rejects_api_key_auth(self, public_client, user):
+        """SetPasswordView rejects API key authentication."""
+        raw_key, prefix, hashed_key = generate_raw_api_key()
+        APIKey.objects.create(
+            user=user,
+            name='Test Key',
+            prefix=prefix,
+            hashed_key=hashed_key,
+            tier='full_access',
+        )
+        public_client.credentials(HTTP_AUTHORIZATION=f'Bearer {raw_key}')
+        payload = {
+            'old_password': 'password',
+            'new_password1': 'NewValidPass123!',
+            'new_password2': 'NewValidPass123!',
+        }
+        resp = public_client.post('/api/v1/users/set-password/', payload, format='json')
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_logout_rejects_api_key_auth(self, public_client, user):
+        """LogoutView rejects API key authentication."""
+        raw_key, prefix, hashed_key = generate_raw_api_key()
+        APIKey.objects.create(
+            user=user,
+            name='Test Key',
+            prefix=prefix,
+            hashed_key=hashed_key,
+            tier='full_access',
+        )
+        public_client.credentials(HTTP_AUTHORIZATION=f'Bearer {raw_key}')
+        resp = public_client.post('/api/v1/logout/', {'refresh': 'fake-token'}, format='json')
+        assert resp.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_logout_rejects_other_user_refresh_token(self, api_client, user, user2):
+        """LogoutView rejects refresh tokens belonging to a different user."""
+        other_refresh = RefreshToken.for_user(user2)
+        api_client.force_authenticate(user=user)
+        resp = api_client.post('/api/v1/logout/', {'refresh': str(other_refresh)}, format='json')
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_logout_succeeds_with_own_refresh_token(self, api_client, user):
+        """LogoutView successfully blacklists the requesting user's refresh token."""
+        own_refresh = RefreshToken.for_user(user)
+        api_client.force_authenticate(user=user)
+        resp = api_client.post('/api/v1/logout/', {'refresh': str(own_refresh)}, format='json')
+        assert resp.status_code == status.HTTP_205_RESET_CONTENT
+
+
+@pytest.mark.django_db
+class TestTokenRevocationOnLifecycleEvents:
+    def test_password_change_blacklists_prior_refresh_tokens(self, api_client, user):
+        """Changing password blacklists prior refresh tokens for that user."""
+        prior_refresh = RefreshToken.for_user(user)
+        api_client.force_authenticate(user=user)
+        payload = {
+            'old_password': 'password',
+            'new_password1': 'NewStrongPassword123!',
+            'new_password2': 'NewStrongPassword123!',
+        }
+        resp = api_client.post('/api/v1/users/set-password/', payload, format='json')
+        assert resp.status_code == status.HTTP_204_NO_CONTENT
+
+        # Attempt to use the prior refresh token should fail with 401 Unauthorized
+        refresh_resp = api_client.post('/api/v1/token/refresh/', {'refresh': str(prior_refresh)}, format='json')
+        assert refresh_resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_user_deactivation_blacklists_refresh_tokens(self, api_client, admin_user, user):
+        """Deactivating a user blacklists their prior refresh tokens."""
+        prior_refresh = RefreshToken.for_user(user)
+        api_client.force_authenticate(user=admin_user)
+        patch_resp = api_client.patch(f'/api/v1/admin/users/{user.id}/', {'is_active': False}, format='json')
+        assert patch_resp.status_code == status.HTTP_200_OK
+
+        # Attempt to use the prior refresh token should fail with 401 Unauthorized
+        refresh_resp = api_client.post('/api/v1/token/refresh/', {'refresh': str(prior_refresh)}, format='json')
+        assert refresh_resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_user_deletion_blacklists_refresh_tokens(self, api_client, admin_user, user):
+        """Deleting a user blacklists their prior refresh tokens."""
+        prior_refresh = RefreshToken.for_user(user)
+        api_client.force_authenticate(user=admin_user)
+        del_resp = api_client.delete(f'/api/v1/admin/users/{user.id}/')
+        assert del_resp.status_code == status.HTTP_204_NO_CONTENT
+
+        # Attempt to use the prior refresh token should fail with 401 Unauthorized
+        refresh_resp = api_client.post('/api/v1/token/refresh/', {'refresh': str(prior_refresh)}, format='json')
+        assert refresh_resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+

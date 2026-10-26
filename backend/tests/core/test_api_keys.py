@@ -216,3 +216,31 @@ def test_api_key_read_write_cannot_mint_full_access_key(public_client, user):
     response = public_client.post(url, payload, format='json')
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
+
+@pytest.mark.django_db
+def test_inactive_user_api_key_authentication_denied(public_client, user):
+    """Verify that an API key belonging to an inactive user account fails authentication."""
+    raw_key, prefix, hashed_key = generate_raw_api_key()
+    APIKey.objects.create(
+        user=user,
+        name='Inactive User Key',
+        prefix=prefix,
+        hashed_key=hashed_key,
+        tier='full_access',
+    )
+    user.is_active = False
+    user.save(update_fields=['is_active'])
+
+    public_client.credentials(HTTP_AUTHORIZATION=f'Bearer {raw_key}')
+
+    # Test API key management endpoint
+    response = public_client.get(reverse('api-key-list'))
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert 'inactive' in str(response.data.get('detail', '')).lower()
+
+    # Test resource endpoint
+    doc_response = public_client.get('/api/v1/documents/')
+    assert doc_response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert 'inactive' in str(doc_response.data.get('detail', '')).lower()
+
+

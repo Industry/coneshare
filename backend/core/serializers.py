@@ -11,7 +11,7 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 from drf_spectacular.utils import extend_schema_field
 
 from core.models import APIKey, AppConfiguration, LoginActivity, Organization, UserGroup
-from core.services import get_dynamic_setting
+from core.services import blacklist_all_user_tokens, get_dynamic_setting
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -68,6 +68,7 @@ class UserGroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserGroup
         fields = ['id', 'name', 'organization']
+        read_only_fields = ['organization']
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -241,11 +242,7 @@ class AdminResetPasswordSerializer(serializers.Serializer):
         with transaction.atomic():
             user.set_password(password)
             user.save(update_fields=['password', 'updated_at'])
-
-            # Invalidate active refresh tokens for the user
-            tokens = OutstandingToken.objects.filter(user=user)
-            for token in tokens:
-                BlacklistedToken.objects.get_or_create(token=token)
+            blacklist_all_user_tokens(user)
 
         return user
 

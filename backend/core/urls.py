@@ -6,7 +6,8 @@ from core import views
 router = DefaultRouter()
 router.register(r'organizations', views.OrganizationViewSet)
 router.register(r'users', views.UserViewSet)
-router.register(r'groups', views.UserGroupViewSet)
+# Note: UserGroupViewSet ('groups') is intentionally omitted from routing as it is
+# reserved for future group-based RBAC and has no active frontend or business consumers.
 router.register(r'api-keys', views.APIKeyViewSet, basename='api-key')
 
 urlpatterns = [

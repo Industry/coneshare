@@ -49,4 +49,3 @@ class APIKeyTierPermission(permissions.BasePermission):
                 return False
 
         return True
-

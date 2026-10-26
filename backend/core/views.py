@@ -16,7 +16,7 @@ from django.utils.encoding import force_bytes
 from django.utils.translation import gettext as _
 from django.utils import timezone
 from datetime import timedelta
-from rest_framework import mixins, permissions, serializers, status, viewsets
+from rest_framework import exceptions, mixins, permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -25,14 +25,15 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from core.models import APIKey, Organization, UserGroup
 from core.authentication import generate_raw_api_key
 from core.i18n_utils import resolve_email_language
-from core.permissions import APIKeyTierPermission
-from core.services import get_dynamic_setting
+from core.permissions import APIKeyTierPermission, IsAdmin
+from core.services import blacklist_all_user_tokens, get_dynamic_setting
 from core.serializers import (APIKeySerializer, APIKeyCreateSerializer, ChangePasswordSerializer, OrganizationSerializer,
                               SignupRequestAcceptedSerializer,
                               SignupRequestSerializer, SignupVerifyResponseSerializer,
@@ -56,11 +57,18 @@ class IsSelf(permissions.BasePermission):
 @extend_schema(tags=['core'])
 class OrganizationViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    API endpoint that allows organizations to be viewed or edited.
+    API endpoint that allows organizations to be viewed.
+    Scoped to the requesting user's own organization.
     """
-    queryset = Organization.objects.all().order_by('-created_at')
+    queryset = Organization.objects.all()
     serializer_class = OrganizationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, APIKeyTierPermission]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return Organization.objects.none()
+        return Organization.objects.filter(id=user.organization_id).order_by('-created_at')
 
 
 @extend_schema(tags=['core'])
@@ -87,10 +95,20 @@ class UserViewSet(mixins.RetrieveModelMixin,
 class UserGroupViewSet(viewsets.ModelViewSet):
     """
     API endpoint that allows user groups to be viewed or edited.
+    NOTE: Currently unmounted from core.urls. Reserved for future group-based RBAC.
     """
-    queryset = UserGroup.objects.all().order_by('name')
+    queryset = UserGroup.objects.all()
     serializer_class = UserGroupSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdmin, APIKeyTierPermission]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return UserGroup.objects.none()
+        return UserGroup.objects.filter(organization=user.organization).order_by('name')
+
+    def perform_create(self, serializer):
+        serializer.save(organization=self.request.user.organization)
 
 
 @extend_schema(tags=['core'])
@@ -249,13 +267,16 @@ class SignupVerifyView(APIView):
 @extend_schema(tags=['core'])
 class SetPasswordView(APIView):
     """View to set a user's password."""
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, APIKeyTierPermission]
 
     @extend_schema(
         request=ChangePasswordSerializer,
         responses={204: None, 400: dict},
     )
     def post(self, request):
+        if isinstance(request.auth, APIKey):
+            raise exceptions.PermissionDenied('Password changes cannot be performed using API keys.')
+
         serializer = ChangePasswordSerializer(data=request.data)
         if serializer.is_valid():
             user = request.user
@@ -266,6 +287,7 @@ class SetPasswordView(APIView):
 
             user.set_password(serializer.validated_data['new_password1'])
             user.save()
+            blacklist_all_user_tokens(user)
             return Response(status=status.HTTP_204_NO_CONTENT)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -273,7 +295,7 @@ class SetPasswordView(APIView):
 
 @extend_schema(tags=['core'])
 class LogoutView(APIView):
-    permission_classes = (IsAuthenticated,)
+    permission_classes = [IsAuthenticated, APIKeyTierPermission]
 
     class LogoutRequestSerializer(serializers.Serializer):
         refresh = serializers.CharField()
@@ -283,9 +305,16 @@ class LogoutView(APIView):
         responses={205: None, 400: dict},
     )
     def post(self, request):
+        if isinstance(request.auth, APIKey):
+            raise exceptions.PermissionDenied('Session logout is not applicable to API keys.')
+
         try:
             refresh_token = request.data["refresh"]
             token = RefreshToken(refresh_token)
+            token_user_id = token.payload.get('user_id')
+            if not token_user_id or str(token_user_id) != str(request.user.id):
+                return Response({'detail': _('Token does not belong to the current user.')}, status=status.HTTP_400_BAD_REQUEST)
+
             token.blacklist()
             logout(request)
             return Response(status=status.HTTP_205_RESET_CONTENT)

@@ -63,13 +63,16 @@ class APIKeyAuthentication(authentication.BaseAuthentication):
 
         prefix = raw_key[:12]
         try:
-            api_key = APIKey.objects.get(prefix=prefix)
+            api_key = APIKey.objects.select_related('user').get(prefix=prefix)
         except APIKey.DoesNotExist:
             raise exceptions.AuthenticationFailed('Invalid API key.')
 
         computed_hash = hash_api_key(raw_key)
         if not hmac.compare_digest(api_key.hashed_key, computed_hash):
             raise exceptions.AuthenticationFailed('Invalid API key.')
+
+        if not api_key.user.is_active:
+            raise exceptions.AuthenticationFailed('User inactive or deleted.')
 
         if api_key.expires_at and api_key.expires_at < timezone.now():
             raise exceptions.AuthenticationFailed('API key has expired.')

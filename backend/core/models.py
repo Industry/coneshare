@@ -147,6 +147,10 @@ class UserGroup(Group):
     """
     A named group of users within an Organization, used for assigning
     permissions. Extends Django's built-in Group model.
+
+    NOTE: Reserved for future group-level RBAC functionality. Not currently
+    integrated with active frontend views or sharing access checks.
+    Public API routing for this model is unmounted to prevent unused endpoint exposure.
     """
     organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name='user_groups')
 

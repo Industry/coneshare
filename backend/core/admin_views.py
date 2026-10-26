@@ -5,6 +5,7 @@ import json
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.db.models import BigIntegerField, Q, Sum, Value
 from django.db.models.functions import Coalesce, Lower
 from django.http import HttpResponse
@@ -26,6 +27,7 @@ from documents.services import recalculate_user_document_size
 from filerequests.models import SecurityThreatEvent
 from sharelinks.models import ShareLink, ViewSession
 from sharelinks.serializers import ShareLinkSerializer
+from core.services import blacklist_all_user_tokens
 from .models import AppConfiguration, LoginActivity, Organization
 from .settings_registry import (DEFAULT_SETTINGS, coerce_to_typed_value,
                                 deserialize_db_value, serialize_typed_to_db_value)
@@ -327,6 +329,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
         When an admin updates a user, prevent them from removing the last active admin.
         """
         instance = self.get_object()
+        was_active = instance.is_active
 
         new_role = serializer.validated_data.get('role', instance.role)
         new_is_active = serializer.validated_data.get('is_active', instance.is_active)
@@ -351,7 +354,10 @@ class AdminUserViewSet(viewsets.ModelViewSet):
                         "detail": "Admins cannot demote or deactivate their own account."
                     })
 
-        serializer.save()
+        with transaction.atomic():
+            user = serializer.save()
+            if was_active and not user.is_active:
+                blacklist_all_user_tokens(user)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -370,7 +376,9 @@ class AdminUserViewSet(viewsets.ModelViewSet):
                 return Response({"detail": "Admins cannot delete their own account."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-        self.perform_destroy(instance)
+        with transaction.atomic():
+            blacklist_all_user_tokens(instance)
+            self.perform_destroy(instance)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['get'], url_path='share-links')
