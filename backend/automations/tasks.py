@@ -7,24 +7,27 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
+import socket
 from celery import shared_task
-from django.core.mail import send_mail
 from django.conf import settings
-from django.template.loader import render_to_string
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from django.utils.translation import gettext as _, override as translation_override
 
+from core.ssrf import (
+    validate_outbound_url,
+    DestinationResolutionError,
+    FORBIDDEN_WEBHOOK_HEADERS,
+)
 from .models import AutomationDelivery
 from .services import dispatch_automation_event
-from sharelinks.models import ShareLink
 from .emails import handle_email_delivery
 
 logger = logging.getLogger(__name__)
 
 MAX_DELIVERY_ATTEMPTS = 3
 BASE_RETRY_SECONDS = 60
-RESPONSE_EXCERPT_LIMIT = 1000
+RESPONSE_EXCERPT_LIMIT = 200
 MAX_CHAT_CUSTOM_FIELD_LINES = 5
 
 
@@ -37,7 +40,11 @@ def _build_signature(secret: str, payload: dict) -> str:
 def _build_headers(delivery: AutomationDelivery, request_payload: dict) -> dict:
     headers = {'Content-Type': 'application/json'}
     if isinstance(delivery.destination.headers, dict):
-        headers.update(delivery.destination.headers)
+        clean_custom_headers = {
+            k: v for k, v in delivery.destination.headers.items()
+            if str(k).strip().lower() not in FORBIDDEN_WEBHOOK_HEADERS
+        }
+        headers.update(clean_custom_headers)
 
     if delivery.idempotency_key:
         headers['X-Coneshare-Idempotency-Key'] = delivery.idempotency_key
@@ -419,6 +426,17 @@ def deliver_automation_delivery_task(delivery_id: str):
         handle_email_delivery(delivery)
         return
 
+    try:
+        validated_url = validate_outbound_url(delivery.destination.endpoint_url)
+    except (DestinationResolutionError, socket.gaierror) as exc:
+        logger.warning('Automation delivery DNS resolution failure: delivery_id=%s error=%s', delivery_id, exc)
+        _mark_failure_and_retry(delivery, 'DNS resolution failed for destination host.')
+        return
+    except Exception as exc:
+        logger.warning('Automation delivery URL validation failure: delivery_id=%s error=%s', delivery_id, exc)
+        _mark_non_retryable_failure(delivery, 'Invalid destination URL or blocked address.')
+        return
+
     owner = delivery.rule.created_by
     owner_lang = getattr(owner, 'language', 'en') or 'en'
     with translation_override(owner_lang):
@@ -428,19 +446,19 @@ def deliver_automation_delivery_task(delivery_id: str):
         delivery_id,
         delivery.destination.destination_type,
         delivery.destination.http_method,
-        delivery.destination.endpoint_url,
+        validated_url,
         sorted(list(request_payload.keys())) if isinstance(request_payload, dict) else type(request_payload).__name__,
         bool(isinstance(request_payload, dict) and request_payload.get('text')),
     )
 
-    logger.debug(f"Webhook URL: {delivery.destination.endpoint_url}, json_data: {request_payload}")
     try:
         response = requests.request(
             method=delivery.destination.http_method,
-            url=delivery.destination.endpoint_url,
+            url=validated_url,
             json=request_payload,
             headers=_build_headers(delivery, request_payload),
             timeout=10,
+            allow_redirects=False,
         )
     except requests.RequestException as exc:
         logger.warning('Automation delivery request exception: delivery_id=%s error=%s', delivery_id, exc)

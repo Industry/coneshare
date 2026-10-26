@@ -27,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../components/ui/Dialog';
+import { useUser } from '../contexts/UserProvider';
 
 const stringifyErrorValue = (value) => {
   if (value == null) return '';
@@ -61,6 +62,8 @@ const handleActionError = (title, error) => {
 
 export function AutomationsPage() {
   const { t } = useTranslation();
+  const { user: currentUser } = useUser();
+  const isOrgAdmin = currentUser?.role === 'admin';
   const [automations, setAutomations] = useState([]);
   const [destinations, setDestinations] = useState([]);
   const [deliveriesData, setDeliveriesData] = useState({ results: [], count: 0 });
@@ -515,10 +518,19 @@ export function AutomationsPage() {
 
           <section className="space-y-3 rounded-lg border p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold">{t('automations.destinations')}</h2>
-              <Button size="sm" onClick={() => setIsCreateDestinationOpen(true)}>
-                {t('automations.newDestination')}
-              </Button>
+              <div>
+                <h2 className="text-lg font-semibold">{t('automations.destinations')}</h2>
+                {!isOrgAdmin && (
+                  <p className="text-xs text-gray-500">
+                    {t('automations.destinationsManagedByAdmin', 'Managed by organization administrators.')}
+                  </p>
+                )}
+              </div>
+              {isOrgAdmin && (
+                <Button size="sm" onClick={() => setIsCreateDestinationOpen(true)}>
+                  {t('automations.newDestination')}
+                </Button>
+              )}
             </div>
             <div className="space-y-2">
               {destinations.length === 0 && <p className="text-sm text-gray-500">{t('automations.noDestinationsYet')}</p>}
@@ -531,9 +543,11 @@ export function AutomationsPage() {
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleOpenEditDestination(destination)}>
-                      {t('common.edit')}
-                    </Button>
+                    {isOrgAdmin && (
+                      <Button variant="outline" size="sm" onClick={() => handleOpenEditDestination(destination)}>
+                        {t('common.edit')}
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -544,9 +558,11 @@ export function AutomationsPage() {
                     >
                       {selectedDestinationIdForLogs === destination.id ? t('automations.showAllLogs') : t('automations.viewLogs')}
                     </Button>
-                    <Button variant="destructive" size="sm" onClick={() => setDestinationToDelete(destination)}>
-                      {t('common.delete')}
-                    </Button>
+                    {isOrgAdmin && (
+                      <Button variant="destructive" size="sm" onClick={() => setDestinationToDelete(destination)}>
+                        {t('common.delete')}
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}

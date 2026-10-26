@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from datarooms.views import get_dataroom_queryset_for_user
+from core.ssrf import validate_outbound_url, validate_webhook_headers
 from .models import (AutomationAssignment, AutomationDelivery, AutomationDestination,
                      AutomationRule)
 
@@ -37,12 +38,21 @@ class AutomationDestinationSerializer(serializers.ModelSerializer):
         return value
 
     def validate_endpoint_url(self, value):
-        # Allow None for email, but require valid URL for others
+        # Allow None for email, but require valid, safe URL for others
         if value is None or value == '':
             return value
-        if not (value.startswith('https://') or value.startswith('http://')):
-            raise serializers.ValidationError('Endpoint URL must start with http:// or https://')
-        return value
+        return validate_outbound_url(value)
+
+    def validate_headers(self, value):
+        return validate_webhook_headers(value)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not (user and getattr(user, 'role', '') == 'admin'):
+            data['headers'] = {}
+        return data
 
 
 class AutomationRuleSerializer(serializers.ModelSerializer):
@@ -106,10 +116,6 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
             invalid = [d.id for d in destinations if d.organization_id != org.id]
             if invalid:
                 raise serializers.ValidationError(f'destinations contain ids outside your organization: {invalid}')
-            if user:
-                not_owned = [d.id for d in destinations if d.created_by_id != user.id]
-                if not_owned:
-                    raise serializers.ValidationError(f'destinations must be owned by you: {not_owned}')
 
         # Require at least one destination for every automation rule.
         if self.instance:
