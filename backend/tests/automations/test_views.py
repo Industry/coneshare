@@ -511,3 +511,152 @@ class TestAutomationDeliveryViewSet:
         assert delivery.response_code is None
         assert delivery.response_body_excerpt == ''
         mock_delay.assert_called_once_with(str(delivery.id))
+
+
+class TestAutomationRuleScopeAuthorization:
+    """Tests for authorization boundaries when attaching automation rules to share links and datarooms."""
+
+    def test_member_cannot_target_other_users_document_share_link(self, api_client, user, user2, document, organization):
+        from sharelinks.models import ShareLink
+        link = ShareLink.objects.create(document=document, created_by=user, name="User1 Link")
+
+        dest2 = AutomationDestination.objects.create(
+            organization=organization,
+            created_by=user2,
+            name="Dest2",
+            destination_type="webhook",
+            endpoint_url="https://example.com/dest2",
+        )
+
+        api_client.force_authenticate(user=user2)
+        resp = api_client.post(
+            '/api/v1/automations/',
+            {
+                'name': 'Scoped Link Rule',
+                'scope_type': 'share_link',
+                'share_link': str(link.id),
+                'destinations': [str(dest2.id)],
+                'subscribed_events': ['document_viewed'],
+                'actions': [{'type': 'notify_destination'}],
+            },
+            format='json',
+        )
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_member_cannot_target_other_users_private_dataroom(self, api_client, user, user2, organization):
+        dataroom = Dataroom.objects.create(name="Private Room", organization=organization, created_by=user)
+        dest2 = AutomationDestination.objects.create(
+            organization=organization,
+            created_by=user2,
+            name="Dest2",
+            destination_type="webhook",
+            endpoint_url="https://example.com/dest2",
+        )
+
+        api_client.force_authenticate(user=user2)
+        resp = api_client.post(
+            '/api/v1/automations/',
+            {
+                'name': 'Scoped Room Rule',
+                'scope_type': 'dataroom',
+                'dataroom': str(dataroom.id),
+                'destinations': [str(dest2.id)],
+                'subscribed_events': ['dataroom_opened'],
+                'actions': [{'type': 'notify_destination'}],
+            },
+            format='json',
+        )
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_collaborator_can_target_collaborated_dataroom_and_link(self, api_client, user, user2, organization):
+        from datarooms.models import DataroomCollaborator
+        from sharelinks.models import ShareLink
+
+        dataroom = Dataroom.objects.create(name="Collab Room", organization=organization, created_by=user)
+        DataroomCollaborator.objects.create(dataroom=dataroom, user=user2, invited_by=user)
+        link = ShareLink.objects.create(dataroom=dataroom, created_by=user, name="Dataroom Link")
+
+        dest2 = AutomationDestination.objects.create(
+            organization=organization,
+            created_by=user2,
+            name="Dest2",
+            destination_type="webhook",
+            endpoint_url="https://example.com/dest2",
+        )
+
+        api_client.force_authenticate(user=user2)
+
+        # 1. Target dataroom
+        resp_room = api_client.post(
+            '/api/v1/automations/',
+            {
+                'name': 'Collab Room Rule',
+                'scope_type': 'dataroom',
+                'dataroom': str(dataroom.id),
+                'destinations': [str(dest2.id)],
+                'subscribed_events': ['dataroom_opened'],
+                'actions': [{'type': 'notify_destination'}],
+            },
+            format='json',
+        )
+        assert resp_room.status_code == status.HTTP_201_CREATED
+
+        # 2. Target dataroom link
+        resp_link = api_client.post(
+            '/api/v1/automations/',
+            {
+                'name': 'Collab Link Rule',
+                'scope_type': 'share_link',
+                'share_link': str(link.id),
+                'destinations': [str(dest2.id)],
+                'subscribed_events': ['document_viewed'],
+                'actions': [{'type': 'notify_destination'}],
+            },
+            format='json',
+        )
+        assert resp_link.status_code == status.HTTP_201_CREATED
+
+    def test_admin_can_target_any_link_or_dataroom_in_org(self, api_client, user, admin_user, document, organization):
+        from sharelinks.models import ShareLink
+
+        link = ShareLink.objects.create(document=document, created_by=user, name="User Link")
+        dataroom = Dataroom.objects.create(name="User Room", organization=organization, created_by=user)
+
+        admin_dest = AutomationDestination.objects.create(
+            organization=organization,
+            created_by=admin_user,
+            name="Admin Dest",
+            destination_type="webhook",
+            endpoint_url="https://example.com/admin-dest",
+        )
+
+        api_client.force_authenticate(user=admin_user)
+
+        resp_link = api_client.post(
+            '/api/v1/automations/',
+            {
+                'name': 'Admin Link Rule',
+                'scope_type': 'share_link',
+                'share_link': str(link.id),
+                'destinations': [str(admin_dest.id)],
+                'subscribed_events': ['document_viewed'],
+                'actions': [{'type': 'notify_destination'}],
+            },
+            format='json',
+        )
+        assert resp_link.status_code == status.HTTP_201_CREATED
+
+        resp_room = api_client.post(
+            '/api/v1/automations/',
+            {
+                'name': 'Admin Room Rule',
+                'scope_type': 'dataroom',
+                'dataroom': str(dataroom.id),
+                'destinations': [str(admin_dest.id)],
+                'subscribed_events': ['dataroom_opened'],
+                'actions': [{'type': 'notify_destination'}],
+            },
+            format='json',
+        )
+        assert resp_room.status_code == status.HTTP_201_CREATED
+

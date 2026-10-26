@@ -1315,12 +1315,13 @@ class DataroomFolderViewSet(viewsets.ModelViewSet):
         old_name = instance.name
         old_parent = instance.parent
         new_parent = serializer.validated_data.get('parent', old_parent)
+        effective_name = new_name or old_name
 
-        if new_name and (new_name != old_name or new_parent != old_parent):
+        if (new_name is not None and new_name != old_name) or (new_parent != old_parent):
             if DataroomFolder.objects.filter(
                 dataroom=instance.dataroom,
                 parent=new_parent,
-                name=new_name
+                name=effective_name
             ).exclude(pk=instance.pk).exists():
                 raise serializers.ValidationError({'name': _('A folder with this name already exists in this location.')})
 

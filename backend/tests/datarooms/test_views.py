@@ -2730,6 +2730,33 @@ class TestDataroomFolderHierarchyAndScopeBoundary:
         }, format='json')
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
+    def test_dataroom_folder_move_rejects_duplicate_sibling_name_on_parent_only_patch(self, api_client, user, dataroom):
+        # Create folder1 at root named "Documents"
+        df1 = DataroomFolder.objects.create(name="Documents", dataroom=dataroom, created_by=user)
+        # Create target_parent at root named "Archive"
+        target_parent = DataroomFolder.objects.create(name="Archive", dataroom=dataroom, created_by=user)
+        # Create sibling inside target_parent with same name "Documents"
+        DataroomFolder.objects.create(name="Documents", dataroom=dataroom, parent=target_parent, created_by=user)
+
+        api_client.force_authenticate(user=user)
+        # Move df1 into target_parent without specifying name in payload
+        resp = api_client.patch(f'/api/v1/dataroom-folders/{df1.id}/', {'parent': str(target_parent.id)}, format='json')
+        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'already exists' in str(resp.data)
+
+        # Non-conflicting move succeeds
+        target_empty = DataroomFolder.objects.create(name="EmptyFolder", dataroom=dataroom, created_by=user)
+        resp = api_client.patch(f'/api/v1/dataroom-folders/{df1.id}/', {'parent': str(target_empty.id)}, format='json')
+        assert resp.status_code == status.HTTP_200_OK
+
+        # Patch without changing parent or name (e.g. is_starred) succeeds
+        resp = api_client.patch(f'/api/v1/dataroom-folders/{df1.id}/', {'is_starred': True}, format='json')
+        assert resp.status_code == status.HTTP_200_OK
+        df1.refresh_from_db()
+        assert df1.is_starred is True
+
+
+
 
 
 

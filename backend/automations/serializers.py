@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from datarooms.views import get_dataroom_queryset_for_user
 from .models import (AutomationAssignment, AutomationDelivery, AutomationDestination,
                      AutomationRule)
 
@@ -78,10 +79,27 @@ class AutomationRuleSerializer(serializers.ModelSerializer):
         if scope_type == AutomationRule.ScopeType.DATAROOM and share_link:
             raise serializers.ValidationError('Dataroom scope cannot include share_link.')
 
-        if share_link and org and share_link.created_by.organization_id != org.id:
-            raise serializers.ValidationError('share_link must belong to your organization.')
-        if dataroom and org and dataroom.organization_id != org.id:
-            raise serializers.ValidationError('dataroom must belong to your organization.')
+        if user and org:
+            is_admin = getattr(user, 'role', '') == 'admin'
+
+            if share_link:
+                if share_link.created_by.organization_id != org.id:
+                    raise serializers.ValidationError('share_link must belong to your organization.')
+                if not is_admin:
+                    if share_link.document_id and share_link.created_by_id != user.id:
+                        raise serializers.ValidationError('You do not have permission to attach automation rules to this share link.')
+                    if share_link.dataroom_id:
+                        accessible_rooms = get_dataroom_queryset_for_user(user)
+                        if not accessible_rooms.filter(id=share_link.dataroom_id).exists():
+                            raise serializers.ValidationError('You do not have permission to attach automation rules to this share link.')
+
+            if dataroom:
+                if dataroom.organization_id != org.id:
+                    raise serializers.ValidationError('dataroom must belong to your organization.')
+                if not is_admin:
+                    accessible_rooms = get_dataroom_queryset_for_user(user)
+                    if not accessible_rooms.filter(id=dataroom.id).exists():
+                        raise serializers.ValidationError('You do not have permission to attach automation rules to this dataroom.')
 
         destinations = attrs.get('destinations')
         if destinations is not None and org:
