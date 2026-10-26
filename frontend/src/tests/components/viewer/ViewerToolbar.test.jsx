@@ -148,4 +148,18 @@ describe('ViewerToolbar', () => {
     renderComponent({ allowDownload: false });
     expect(screen.queryByTitle('Download file')).not.toBeInTheDocument();
   });
+
+  it('hides print button when allowDownload is false', () => {
+    renderComponent({ allowDownload: false });
+    expect(screen.queryByTitle('Print document')).not.toBeInTheDocument();
+  });
+
+  it('hides print button when previewMode is spreadsheet or markdown', () => {
+    const { unmount } = renderComponent({ allowDownload: true, previewMode: 'spreadsheet' });
+    expect(screen.queryByTitle('Print document')).not.toBeInTheDocument();
+    unmount();
+
+    renderComponent({ allowDownload: true, previewMode: 'markdown' });
+    expect(screen.queryByTitle('Print document')).not.toBeInTheDocument();
+  });
 });

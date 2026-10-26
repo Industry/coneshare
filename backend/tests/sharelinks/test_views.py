@@ -2920,6 +2920,24 @@ class TestWatermarkingViews:
 
     @patch('sharelinks.views.requests.get')
     @patch('sharelinks.views.fileserver_client.generate_download_url')
+    def test_download_watermarked_pdf_file_inline_disposition_for_printing(self, mock_fs_download_url, mock_requests_get, public_client, watermarked_link):
+        """Test that passing inline=true produces Content-Disposition: inline for printing."""
+        mock_fs_download_url.return_value = "/files/download/token"
+        pdf_content = b'%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj\nxref\n0 4\n0000000000 65535 f \n0000000010 00000 n \n0000000059 00000 n \n0000000112 00000 n \ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n178\n%%EOF'
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.content = pdf_content
+        mock_requests_get.return_value = mock_response
+
+        url = f'/api/v1/links/{watermarked_link.slug}/download-file/?inline=true'
+        response = public_client.get(url, REMOTE_ADDR='192.168.1.1')
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.get('Content-Type') == 'application/pdf'
+        assert 'inline; filename="Test_Document.pdf"' in response.get('Content-Disposition')
+
+    @patch('sharelinks.views.requests.get')
+    @patch('sharelinks.views.fileserver_client.generate_download_url')
     @patch('sharelinks.views.convert_from_bytes')
     def test_download_watermarked_pdf_file_flattened_success(self, mock_convert, mock_fs_download_url, mock_requests_get, public_client, watermarked_link):
         """Test that a watermarked PDF file is generated, flattened, and served for download."""

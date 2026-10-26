@@ -24,6 +24,8 @@ export const PdfJsViewer = forwardRef(({
   viewId,
   dataroomVisitId,
   watermarkText = '',
+  allowDownload = false,
+  isWatermarked = false,
   zoomLevel = 1,
   onPageChange = () => {},
   onDocumentLoad = () => {},
@@ -219,14 +221,16 @@ export const PdfJsViewer = forwardRef(({
           <p className="text-sm text-gray-500 mt-2">
             {error.message || 'An error occurred while loading the PDF document.'}
           </p>
-          <a
-            href={pdfUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
-          >
-            Download the PDF
-          </a>
+          {allowDownload && !isWatermarked && !watermarkText && (
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block mt-4 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500"
+            >
+              Download the PDF
+            </a>
+          )}
         </div>
       </div>
     );

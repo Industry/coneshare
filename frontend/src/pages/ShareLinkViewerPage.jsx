@@ -404,13 +404,21 @@ export function ShareLinkViewerPage() {
   }, [currentPage, totalPages]);
 
   const handlePrint = () => {
-    if (!viewData) return;
+    if (!viewData || !viewData.link_settings?.allow_download) return;
+
+    const isWatermarked = Boolean(viewData.link_settings?.enable_watermark);
 
     if (viewData.preview_mode === 'client_pdf') {
-      printPdf(viewData.pdf_preview_url);
+      if (isWatermarked && downloadUrl) {
+        const inlineUrl = downloadUrl.includes('?') ? `${downloadUrl}&inline=true` : `${downloadUrl}?inline=true`;
+        printPdf(inlineUrl);
+      } else {
+        printPdf(viewData.pdf_preview_url);
+      }
     } else {
-      if (viewData.link_settings?.allow_download && viewData.type === 'pdf') {
-        printPdf(downloadUrl);
+      if (viewData.type === 'pdf' && downloadUrl) {
+        const inlineUrl = downloadUrl.includes('?') ? `${downloadUrl}&inline=true` : `${downloadUrl}?inline=true`;
+        printPdf(inlineUrl);
       } else {
         const imageUrls = viewData.pages?.map((p) => p.url) || [];
         printImages(imageUrls);
@@ -805,6 +813,8 @@ export function ShareLinkViewerPage() {
                       ? (viewData.link_settings.resolved_watermark_text || viewData.link_settings.watermark_text || '')
                       : ''
                   }
+                  allowDownload={Boolean(viewData.link_settings?.allow_download)}
+                  isWatermarked={Boolean(viewData.link_settings?.enable_watermark)}
                   zoomLevel={zoomLevel}
                   onPageChange={setCurrentPage}
                   onDocumentLoad={handleDocumentLoad}

@@ -5,6 +5,12 @@ import { DataroomViewer } from '../../../components/viewer/DataroomViewer';
 import * as api from '../../../services/api';
 import '../../../i18n';
 import { DATAROOM_VIEWER_PAGE_SIZE } from '../../../constants/pagination';
+import { printPdf } from '../../../lib/print';
+
+vi.mock('../../../lib/print', () => ({
+  printPdf: vi.fn(),
+  printImages: vi.fn(),
+}));
 
 vi.mock('../../../services/api', () => ({
   getShareLinkViewData: vi.fn(),
@@ -16,6 +22,10 @@ vi.mock('../../../services/api', () => ({
 // Mock child components that are not relevant to this test
 vi.mock('../../../components/viewer/DataroomDocumentPreview', () => ({
   DataroomDocumentPreview: () => <div>Document Preview</div>,
+}));
+
+vi.mock('../../../components/documents/PdfJsViewer', () => ({
+  PdfJsViewer: () => <div data-testid="pdfjs-viewer">PdfJs Viewer</div>,
 }));
 
 vi.mock('../../../components/viewer/QnAPanel', () => ({
@@ -1251,6 +1261,101 @@ describe('DataroomViewer', () => {
     } finally {
       window.innerWidth = originalInnerWidth;
     }
+  });
+
+  describe('Print Security Controls (T4-03)', () => {
+    it('routes printing through watermarked docDownloadUrl when watermark is enabled', async () => {
+      const docViewData = {
+        id: 'doc-watermark',
+        name: 'Report.pdf',
+        type: 'pdf',
+        preview_mode: 'client_pdf',
+        pdf_preview_url: 'https://example.com/raw-report.pdf',
+        link_settings: {
+          allow_download: true,
+          enable_watermark: true,
+          watermark_text: 'CONFIDENTIAL_NDA',
+        },
+      };
+
+      api.getShareLinkViewData.mockResolvedValue({ data: docViewData });
+
+      render(
+        <MemoryRouter initialEntries={['/view/test-slug?dataroom_document_id=doc-watermark']}>
+          <DataroomViewer
+            data={{
+              ...mockDataroomData,
+              items: [
+                {
+                  type: 'document',
+                  id: 'doc-watermark',
+                  document_id: 'doc-file-wm',
+                  name: 'Report.pdf',
+                  document_type: 'pdf',
+                  preview_mode: 'client_pdf',
+                  file_size: 1024,
+                },
+              ],
+            }}
+            slug="test-slug"
+            viewId="view-999"
+          />
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTitle('Print document')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByTitle('Print document'));
+      expect(printPdf).toHaveBeenCalledWith('/api/v1/links/test-slug/download-file/?dataroom_document_id=doc-watermark&view_session_id=view-999&inline=true');
+      expect(printPdf).not.toHaveBeenCalledWith('https://example.com/raw-report.pdf');
+    });
+
+    it('hides print button when allow_download is false', async () => {
+      const docViewData = {
+        id: 'doc-no-download',
+        name: 'Restricted.pdf',
+        type: 'pdf',
+        preview_mode: 'client_pdf',
+        pdf_preview_url: 'https://example.com/raw-restricted.pdf',
+        link_settings: {
+          allow_download: false,
+        },
+      };
+
+      api.getShareLinkViewData.mockResolvedValue({ data: docViewData });
+
+      render(
+        <MemoryRouter initialEntries={['/view/test-slug?dataroom_document_id=doc-no-download']}>
+          <DataroomViewer
+            data={{
+              ...mockDataroomData,
+              items: [
+                {
+                  type: 'document',
+                  id: 'doc-no-download',
+                  document_id: 'doc-file-nd',
+                  name: 'Restricted.pdf',
+                  document_type: 'pdf',
+                  preview_mode: 'client_pdf',
+                  file_size: 1024,
+                },
+              ],
+            }}
+            slug="test-slug"
+            viewId="view-999"
+          />
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Restricted.pdf')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTitle('Print document')).not.toBeInTheDocument();
+      expect(printPdf).not.toHaveBeenCalled();
+    });
   });
 });
 

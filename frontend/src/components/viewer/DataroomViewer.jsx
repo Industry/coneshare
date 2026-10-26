@@ -878,13 +878,23 @@ export function DataroomViewer({ data, slug, viewId, publicMeta }) {
   }, [selectedDocumentId, currentPage, totalPages]);
 
   const handlePrint = () => {
-    if (!documentViewData) return;
+    if (!documentViewData || !documentViewData.link_settings?.allow_download) return;
+
+    const isWatermarked = Boolean(
+      documentViewData.link_settings?.enable_watermark ?? scopeData?.link_settings?.enable_watermark
+    );
 
     if (documentViewData.preview_mode === 'client_pdf') {
-      printPdf(documentViewData.pdf_preview_url);
+      if (isWatermarked && docDownloadUrl) {
+        const inlineUrl = docDownloadUrl.includes('?') ? `${docDownloadUrl}&inline=true` : `${docDownloadUrl}?inline=true`;
+        printPdf(inlineUrl);
+      } else {
+        printPdf(documentViewData.pdf_preview_url);
+      }
     } else {
-      if (documentViewData.link_settings?.allow_download && documentViewData.type === 'pdf') {
-        printPdf(docDownloadUrl);
+      if (documentViewData.type === 'pdf' && docDownloadUrl) {
+        const inlineUrl = docDownloadUrl.includes('?') ? `${docDownloadUrl}&inline=true` : `${docDownloadUrl}?inline=true`;
+        printPdf(inlineUrl);
       } else {
         const imageUrls = documentViewData.pages?.map((p) => p.url) || [];
         printImages(imageUrls);
@@ -1218,6 +1228,9 @@ export function DataroomViewer({ data, slug, viewId, publicMeta }) {
                               : ''
                           }
                           allowDownload={canDownload}
+                          isWatermarked={Boolean(
+                            documentViewData.link_settings?.enable_watermark ?? scopeData?.link_settings?.enable_watermark
+                          )}
                           zoomLevel={zoomLevel}
                           documentData={documentViewData}
                         />
@@ -1250,6 +1263,10 @@ export function DataroomViewer({ data, slug, viewId, publicMeta }) {
                               ? (documentViewData.link_settings.resolved_watermark_text || documentViewData.link_settings.watermark_text || '')
                               : ''
                           }
+                          allowDownload={canDownload}
+                          isWatermarked={Boolean(
+                            documentViewData.link_settings?.enable_watermark ?? scopeData?.link_settings?.enable_watermark
+                          )}
                           zoomLevel={zoomLevel}
                           onPageChange={setCurrentPage}
                           onDocumentLoad={handleDocumentLoad}

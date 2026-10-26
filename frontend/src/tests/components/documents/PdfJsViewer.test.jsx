@@ -122,6 +122,40 @@ describe('PdfJsViewer', () => {
     expect(screen.getByText('Failed to load PDF file')).toBeInTheDocument();
   });
 
+  it('should hide fallback download link on error when allowDownload is false or watermark is enabled', () => {
+    usePdfDocument.mockReturnValue({
+      pdfDoc: null,
+      numPages: 0,
+      pageDimensions: [],
+      loading: false,
+      error: new Error('Failed to load PDF file'),
+    });
+
+    const { unmount } = renderComponent({ allowDownload: false });
+    expect(screen.queryByRole('link', { name: /Download the PDF/i })).not.toBeInTheDocument();
+    unmount();
+
+    const { unmount: unmount2 } = renderComponent({ allowDownload: true, watermarkText: 'CONFIDENTIAL' });
+    expect(screen.queryByRole('link', { name: /Download the PDF/i })).not.toBeInTheDocument();
+    unmount2();
+
+    renderComponent({ allowDownload: true, isWatermarked: true, watermarkText: '' });
+    expect(screen.queryByRole('link', { name: /Download the PDF/i })).not.toBeInTheDocument();
+  });
+
+  it('should render fallback download link on error only when allowDownload is true and no watermark', () => {
+    usePdfDocument.mockReturnValue({
+      pdfDoc: null,
+      numPages: 0,
+      pageDimensions: [],
+      loading: false,
+      error: new Error('Failed to load PDF file'),
+    });
+
+    renderComponent({ allowDownload: true, watermarkText: '' });
+    expect(screen.getByRole('link', { name: /Download the PDF/i })).toBeInTheDocument();
+  });
+
   it('should render all pages correctly', () => {
     renderComponent();
     expect(screen.getAllByTestId('pdf-page')).toHaveLength(3);

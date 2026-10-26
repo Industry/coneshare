@@ -2739,6 +2739,11 @@ class ShareLinkFileDownloadView(APIView):
             authorized_links = request.session.get('authorized_share_links', {})
             auth_status = authorized_links.get(str(link.id), {})
             viewer_email = auth_status.get('viewer_email', '')
+            is_inline = (
+                request.query_params.get('inline', '').lower() in ('true', '1')
+                or request.query_params.get('disposition', '').lower() == 'inline'
+            )
+            disposition_type = 'inline' if is_inline else 'attachment'
             try:
                 if document.type == 'image':
                     image_buffer, content_type = _generate_watermarked_image(
@@ -2747,7 +2752,7 @@ class ShareLinkFileDownloadView(APIView):
                     response = HttpResponse(image_buffer, content_type=content_type)
                     # Ensure filename has .jpg extension since we're creating a JPEG
                     safe_filename, _ = os.path.splitext(get_valid_filename(document.name))
-                    response['Content-Disposition'] = f'attachment; filename="{safe_filename}.jpg"'
+                    response['Content-Disposition'] = f'{disposition_type}; filename="{safe_filename}.jpg"'
                     return response
 
                 # Fallback for PDF and Office documents which become PDF
@@ -2759,7 +2764,7 @@ class ShareLinkFileDownloadView(APIView):
                 response = HttpResponse(pdf_buffer, content_type='application/pdf')
                 # Ensure filename has .pdf extension
                 safe_filename, _ = os.path.splitext(get_valid_filename(document.name))
-                response['Content-Disposition'] = f'attachment; filename="{safe_filename}.pdf"'
+                response['Content-Disposition'] = f'{disposition_type}; filename="{safe_filename}.pdf"'
                 return response
             except WatermarkingDependenciesMissingError as e:
                 return Response({"message": str(e)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)

@@ -6,8 +6,13 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import i18n from '../../i18n';
 import { ShareLinkViewerPage } from '../../pages/ShareLinkViewerPage';
 import * as api from '../../services/api';
+import { printPdf } from '../../lib/print';
 
 vi.mock('../../services/api');
+vi.mock('../../lib/print', () => ({
+  printPdf: vi.fn(),
+  printImages: vi.fn(),
+}));
 
 // Mock child components to isolate the page component
 vi.mock('../../components/viewer/PasswordForm', () => ({
@@ -53,7 +58,16 @@ vi.mock('../../components/documents/PdfJsViewer', () => ({
 }));
 
 vi.mock('../../components/viewer/ViewerToolbar', () => ({
-  ViewerToolbar: () => <div>Viewer Toolbar</div>,
+  ViewerToolbar: ({ allowDownload, onPrint, previewMode }) => (
+    <div>
+      <div>Viewer Toolbar</div>
+      {allowDownload && onPrint && previewMode !== 'spreadsheet' && previewMode !== 'markdown' && (
+        <button data-testid="toolbar-print-btn" onClick={onPrint}>
+          Print Document
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 vi.mock('../../components/viewer/QnAPanel', () => ({
@@ -661,6 +675,118 @@ describe('ShareLinkViewerPage', () => {
         expect(screen.getByText('Bad Gateway')).toBeInTheDocument();
       });
       expect(screen.getByText('Link Error')).toBeInTheDocument();
+    });
+
+    describe('Print Security Controls (T4-03)', () => {
+      beforeEach(() => {
+        vi.clearAllMocks();
+        api.getShareLinkPublicMeta.mockResolvedValue({ data: mockPublicMeta });
+        api.createViewSession.mockResolvedValue({ data: mockViewData });
+      });
+
+      it('prints raw pdf_preview_url when allow_download is true and no watermark is configured', async () => {
+        api.getShareLinkViewData.mockResolvedValue({
+          data: {
+            id: 'doc-1',
+            name: 'test.pdf',
+            type: 'pdf',
+            preview_mode: 'client_pdf',
+            pdf_preview_url: 'https://example.com/raw.pdf',
+            link_settings: {
+              allow_download: true,
+              enable_watermark: false,
+            },
+          },
+        });
+
+        renderComponent('/view/test-slug');
+
+        await waitFor(() => {
+          expect(screen.getByTestId('toolbar-print-btn')).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByTestId('toolbar-print-btn'));
+        expect(printPdf).toHaveBeenCalledWith('https://example.com/raw.pdf');
+      });
+
+      it('routes printing through watermarked downloadUrl when watermark is enabled', async () => {
+        api.getShareLinkViewData.mockResolvedValue({
+          data: {
+            id: 'doc-1',
+            name: 'test.pdf',
+            type: 'pdf',
+            preview_mode: 'client_pdf',
+            pdf_preview_url: 'https://example.com/raw.pdf',
+            link_settings: {
+              allow_download: true,
+              enable_watermark: true,
+              watermark_text: 'CONFIDENTIAL',
+            },
+          },
+        });
+
+        renderComponent('/view/test-slug');
+
+        await waitFor(() => {
+          expect(screen.getByTestId('toolbar-print-btn')).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByTestId('toolbar-print-btn'));
+        expect(printPdf).toHaveBeenCalledWith('/api/v1/links/test-slug/download-file/?inline=true');
+        expect(printPdf).not.toHaveBeenCalledWith('https://example.com/raw.pdf');
+      });
+
+      it('routes printing through watermarked downloadUrl even if watermark_text is empty when enable_watermark is true', async () => {
+        api.getShareLinkViewData.mockResolvedValue({
+          data: {
+            id: 'doc-1',
+            name: 'test.pdf',
+            type: 'pdf',
+            preview_mode: 'client_pdf',
+            pdf_preview_url: 'https://example.com/raw.pdf',
+            link_settings: {
+              allow_download: true,
+              enable_watermark: true,
+              watermark_text: '',
+              resolved_watermark_text: '',
+            },
+          },
+        });
+
+        renderComponent('/view/test-slug');
+
+        await waitFor(() => {
+          expect(screen.getByTestId('toolbar-print-btn')).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByTestId('toolbar-print-btn'));
+        expect(printPdf).toHaveBeenCalledWith('/api/v1/links/test-slug/download-file/?inline=true');
+        expect(printPdf).not.toHaveBeenCalledWith('https://example.com/raw.pdf');
+      });
+
+      it('does not display print button or allow printing when allow_download is false', async () => {
+        api.getShareLinkViewData.mockResolvedValue({
+          data: {
+            id: 'doc-1',
+            name: 'test.pdf',
+            type: 'pdf',
+            preview_mode: 'client_pdf',
+            pdf_preview_url: 'https://example.com/raw.pdf',
+            link_settings: {
+              allow_download: false,
+            },
+          },
+        });
+
+        renderComponent('/view/test-slug');
+
+        await waitFor(() => {
+          expect(screen.getByText('Viewer Toolbar')).toBeInTheDocument();
+        });
+
+        expect(screen.queryByTestId('toolbar-print-btn')).not.toBeInTheDocument();
+        expect(printPdf).not.toHaveBeenCalled();
+      });
     });
   });
 
