@@ -2,6 +2,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import re
 from typing import Any, Dict, Optional
 import httpx
 from fastmcp import Context
@@ -10,6 +11,27 @@ from fastmcp.server.dependencies import get_http_request
 from coneshare_mcp.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
+
+RESOURCE_ID_REGEX = re.compile(r"^[0-9A-Za-z_-]{1,64}$")
+
+
+def _validate_resource_id(value: Any, name: str = "id") -> str:
+    """
+    Validates that a resource identifier is safe for URL path interpolation and query parameters.
+    Strictly permits only alphanumeric characters, underscores, and hyphens (up to 64 chars).
+    Rejects path traversal ('..', '/'), query strings ('?'), fragments ('#'),
+    and percent-encoding ('%').
+    """
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"Invalid {name}: must be a non-empty string identifier.")
+
+    clean_value = value.strip()
+    if not RESOURCE_ID_REGEX.match(clean_value):
+        raise ValueError(
+            f"Invalid {name}: '{value}'. Must be an alphanumeric identifier without slashes or special characters."
+        )
+
+    return clean_value
 
 
 class ConeshareClient:
@@ -155,14 +177,15 @@ class ConeshareClient:
     ) -> dict[str, Any]:
         params = {"page": page, "page_size": page_size}
         if folder_id:
-            params["folder"] = folder_id
+            params["folder"] = _validate_resource_id(folder_id, "folder_id")
         res = await self._request("GET", "/documents/", params=params)
         if isinstance(res, dict) and res.get("error"):
             return res
         return self._paginate(res, page, page_size)
 
     async def get_document(self, document_id: str) -> dict[str, Any]:
-        return await self._request("GET", f"/documents/{document_id}/")
+        doc_id = _validate_resource_id(document_id, "document_id")
+        return await self._request("GET", f"/documents/{doc_id}/")
 
     async def search_documents(
         self,
@@ -177,7 +200,8 @@ class ConeshareClient:
         return self._paginate(res, page, page_size)
 
     async def delete_document(self, document_id: str) -> dict[str, Any]:
-        return await self._request("DELETE", f"/documents/{document_id}/")
+        doc_id = _validate_resource_id(document_id, "document_id")
+        return await self._request("DELETE", f"/documents/{doc_id}/")
 
     async def request_document_upload(
         self,
@@ -217,24 +241,27 @@ class ConeshareClient:
         name: Optional[str] = None,
         description: Optional[str] = None,
     ) -> dict[str, Any]:
+        doc_id = _validate_resource_id(document_id, "document_id")
         payload: dict[str, Any] = {}
         if name is not None:
             payload["name"] = name
         if description is not None:
             payload["description"] = description
-        return await self._request("PATCH", f"/documents/{document_id}/", json_data=payload)
+        return await self._request("PATCH", f"/documents/{doc_id}/", json_data=payload)
 
     async def create_folder(self, name: str, parent_folder_id: Optional[str] = None) -> dict[str, Any]:
         payload: dict[str, Any] = {"name": name}
         if parent_folder_id:
-            payload["parent"] = parent_folder_id
+            payload["parent"] = _validate_resource_id(parent_folder_id, "parent_folder_id")
         return await self._request("POST", "/folders/", json_data=payload)
 
     async def update_folder(self, folder_id: str, name: str) -> dict[str, Any]:
-        return await self._request("PATCH", f"/folders/{folder_id}/", json_data={"name": name})
+        f_id = _validate_resource_id(folder_id, "folder_id")
+        return await self._request("PATCH", f"/folders/{f_id}/", json_data={"name": name})
 
     async def delete_folder(self, folder_id: str) -> dict[str, Any]:
-        return await self._request("DELETE", f"/folders/{folder_id}/")
+        f_id = _validate_resource_id(folder_id, "folder_id")
+        return await self._request("DELETE", f"/folders/{f_id}/")
 
     async def move_items(
         self,
@@ -244,14 +271,15 @@ class ConeshareClient:
     ) -> dict[str, Any]:
         if not document_ids and not folder_ids:
             raise ValueError("Provide at least one document ID or folder ID.")
+        clean_dest = _validate_resource_id(destination_folder_id, "destination_folder_id") if destination_folder_id is not None else None
+        clean_doc_ids = [_validate_resource_id(d, "document_id") for d in (document_ids or [])]
+        clean_folder_ids = [_validate_resource_id(f, "folder_id") for f in (folder_ids or [])]
         payload: dict[str, Any] = {
-            "destination_folder_id": destination_folder_id,
-            "document_ids": document_ids or [],
-            "folder_ids": folder_ids or [],
+            "destination_folder_id": clean_dest,
+            "document_ids": clean_doc_ids,
+            "folder_ids": clean_folder_ids,
         }
         return await self._request("POST", "/actions/move/", json_data=payload)
-
-
 
     # --- Datarooms API ---
 
@@ -263,7 +291,8 @@ class ConeshareClient:
         return self._paginate(res, page, page_size)
 
     async def get_dataroom(self, dataroom_id: str) -> dict[str, Any]:
-        return await self._request("GET", f"/datarooms/{dataroom_id}/")
+        dr_id = _validate_resource_id(dataroom_id, "dataroom_id")
+        return await self._request("GET", f"/datarooms/{dr_id}/")
 
     async def create_dataroom(
         self,
@@ -271,6 +300,7 @@ class ConeshareClient:
         description: Optional[str] = None,
         document_ids: Optional[list[str]] = None,
     ) -> dict[str, Any]:
+        clean_doc_ids = [_validate_resource_id(d, "document_id") for d in document_ids] if document_ids else None
         payload: dict[str, Any] = {"name": name}
         if description:
             payload["description"] = description
@@ -278,9 +308,9 @@ class ConeshareClient:
         if isinstance(res, dict) and res.get("error"):
             return res
 
-        if document_ids and isinstance(res, dict) and "id" in res:
+        if clean_doc_ids and isinstance(res, dict) and "id" in res:
             try:
-                add_res = await self.add_content_to_dataroom(dataroom_id=res["id"], document_ids=document_ids)
+                add_res = await self.add_content_to_dataroom(dataroom_id=res["id"], document_ids=clean_doc_ids)
                 if isinstance(add_res, dict) and add_res.get("error"):
                     await self.delete_dataroom(dataroom_id=res["id"])
                     return {
@@ -295,8 +325,10 @@ class ConeshareClient:
         return res
 
     async def add_content_to_dataroom(self, dataroom_id: str, document_ids: list[str]) -> dict[str, Any]:
-        payload = {"document_ids": document_ids}
-        return await self._request("POST", f"/datarooms/{dataroom_id}/add-content/", json_data=payload)
+        dr_id = _validate_resource_id(dataroom_id, "dataroom_id")
+        clean_doc_ids = [_validate_resource_id(d, "document_id") for d in document_ids]
+        payload = {"document_ids": clean_doc_ids}
+        return await self._request("POST", f"/datarooms/{dr_id}/add-content/", json_data=payload)
 
     async def remove_content_from_dataroom(
         self,
@@ -305,13 +337,14 @@ class ConeshareClient:
         dataroom_document_ids: Optional[list[str]] = None,
         dataroom_folder_ids: Optional[list[str]] = None,
     ) -> dict[str, Any]:
+        dr_id = _validate_resource_id(dataroom_id, "dataroom_id")
         doc_ids = dataroom_document_ids or document_ids
         payload: dict[str, Any] = {}
         if doc_ids:
-            payload["dataroom_document_ids"] = doc_ids
+            payload["dataroom_document_ids"] = [_validate_resource_id(d, "document_id") for d in doc_ids]
         if dataroom_folder_ids:
-            payload["dataroom_folder_ids"] = dataroom_folder_ids
-        return await self._request("POST", f"/datarooms/{dataroom_id}/remove-content/", json_data=payload)
+            payload["dataroom_folder_ids"] = [_validate_resource_id(f, "dataroom_folder_id") for f in dataroom_folder_ids]
+        return await self._request("POST", f"/datarooms/{dr_id}/remove-content/", json_data=payload)
 
     async def update_dataroom(
         self,
@@ -319,15 +352,17 @@ class ConeshareClient:
         name: Optional[str] = None,
         description: Optional[str] = None,
     ) -> dict[str, Any]:
+        dr_id = _validate_resource_id(dataroom_id, "dataroom_id")
         payload: dict[str, Any] = {}
         if name is not None:
             payload["name"] = name
         if description is not None:
             payload["description"] = description
-        return await self._request("PATCH", f"/datarooms/{dataroom_id}/", json_data=payload)
+        return await self._request("PATCH", f"/datarooms/{dr_id}/", json_data=payload)
 
     async def delete_dataroom(self, dataroom_id: str) -> dict[str, Any]:
-        return await self._request("DELETE", f"/datarooms/{dataroom_id}/")
+        dr_id = _validate_resource_id(dataroom_id, "dataroom_id")
+        return await self._request("DELETE", f"/datarooms/{dr_id}/")
 
     # --- Share Links API ---
 
@@ -340,9 +375,9 @@ class ConeshareClient:
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"page": page, "page_size": page_size}
         if document_id:
-            params["document_id"] = document_id
+            params["document_id"] = _validate_resource_id(document_id, "document_id")
         if dataroom_id:
-            params["dataroom_id"] = dataroom_id
+            params["dataroom_id"] = _validate_resource_id(dataroom_id, "dataroom_id")
         res = await self._request("GET", "/share-links/", params=params)
         if isinstance(res, dict) and res.get("error"):
             return res
@@ -352,12 +387,14 @@ class ConeshareClient:
         return await self._request("POST", "/share-links/", json_data=data)
 
     async def update_share_link(self, share_link_id: str, data: dict[str, Any]) -> dict[str, Any]:
-        return await self._request("PATCH", f"/share-links/{share_link_id}/", json_data=data)
+        sl_id = _validate_resource_id(share_link_id, "share_link_id")
+        return await self._request("PATCH", f"/share-links/{sl_id}/", json_data=data)
 
     # --- Analytics API ---
 
     async def get_document_analytics(self, document_id: str) -> dict[str, Any]:
-        return await self._request("GET", f"/documents/{document_id}/stats/")
+        doc_id = _validate_resource_id(document_id, "document_id")
+        return await self._request("GET", f"/documents/{doc_id}/stats/")
 
     async def list_view_sessions(
         self,
@@ -370,11 +407,11 @@ class ConeshareClient:
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"page": page, "page_size": page_size}
         if document_id:
-            params["document_id"] = document_id
+            params["document_id"] = _validate_resource_id(document_id, "document_id")
         if share_link_id:
-            params["share_link_id"] = share_link_id
+            params["share_link_id"] = _validate_resource_id(share_link_id, "share_link_id")
         if dataroom_id:
-            params["dataroom_id"] = dataroom_id
+            params["dataroom_id"] = _validate_resource_id(dataroom_id, "dataroom_id")
         if viewer_email:
             params["viewer_email"] = viewer_email
 
@@ -405,7 +442,8 @@ class ConeshareClient:
         }
 
     async def get_view_session(self, session_id: str) -> dict[str, Any]:
-        return await self._request("GET", f"/analytics/view-sessions/{session_id}/")
+        s_id = _validate_resource_id(session_id, "session_id")
+        return await self._request("GET", f"/analytics/view-sessions/{s_id}/")
 
     # --- Admin API ---
 
@@ -424,7 +462,8 @@ class ConeshareClient:
         return self._paginate(res, page, page_size)
 
     async def get_admin_user_details(self, user_id: str) -> dict[str, Any]:
-        return await self._request("GET", f"/admin/users/{user_id}/")
+        u_id = _validate_resource_id(user_id, "user_id")
+        return await self._request("GET", f"/admin/users/{u_id}/")
 
     async def list_login_activities(
         self,
@@ -434,7 +473,7 @@ class ConeshareClient:
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"page": page, "page_size": page_size}
         if user_id:
-            params["user_id"] = user_id
+            params["user_id"] = _validate_resource_id(user_id, "user_id")
         res = await self._request("GET", "/admin/login-activities/", params=params)
         if isinstance(res, dict) and res.get("error"):
             return res
