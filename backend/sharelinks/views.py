@@ -113,6 +113,7 @@ def _build_visitor_context(view_session=None):
         'visitor_city': view_session.city or None,
         'visitor_latitude': view_session.latitude,
         'visitor_longitude': view_session.longitude,
+        'email_verification_method': view_session.email_verification_method or None,
     }
 
 
@@ -813,6 +814,7 @@ class ShareLinkViewDataView(APIView):
                                 'password_verified': True,
                                 'email_verified': True,
                                 'viewer_email': session.user.email,
+                                'email_method': 'owner',
                                 'nda_accepted_version': session.share_link.nda_version,
                             }
                             request.session['authorized_share_links'] = authorized_links
@@ -837,6 +839,7 @@ class ShareLinkViewDataView(APIView):
                 'password_verified': True,
                 'email_verified': True,
                 'viewer_email': request.user.email,
+                'email_method': 'owner',
                 'nda_accepted_version': link.nda_version,
             }
             request.session['authorized_share_links'] = authorized_links
@@ -2020,11 +2023,12 @@ class ShareLinkRequestAccessView(APIView):
                 authorized_links[str(link.id)] = {}
             authorized_links[str(link.id)]['email_verified'] = True
             authorized_links[str(link.id)]['viewer_email'] = email
+            authorized_links[str(link.id)]['email_method'] = 'self_reported'
             request.session['authorized_share_links'] = authorized_links
             _dispatch_automation_event(
                 link,
                 'email_identified',
-                {'viewer_email': email},
+                {'viewer_email': email, 'email_verification_method': 'self_reported'},
             )
             return Response({"message": "Access granted.", "verification_required": False}, status=status.HTTP_200_OK)
         else:
@@ -2123,13 +2127,14 @@ class ShareLinkConfirmAccessView(APIView):
                     'password_verified': True,
                     'email_verified': True,
                     'viewer_email': verification.email,
+                    'email_method': 'verified',
                 }
                 request.session['authorized_share_links'] = authorized_links
                 
                 _dispatch_automation_event(
                     link,
                     'email_identified',
-                    {'viewer_email': verification.email},
+                    {'viewer_email': verification.email, 'email_verification_method': 'verified'},
                 )
                 
                 # Delete the token to consume it
@@ -3236,8 +3241,10 @@ class ViewSessionViewSet(
             self.request.session.pop('preview_link_id', None)
 
         viewer_email = ''
+        email_method = ''
         if preview_owner_email:
             viewer_email = preview_owner_email
+            email_method = 'owner'
         else:
             # Attempt to find a regular viewer's email from the session if they've been
             # authorized via an email-required link.
@@ -3246,11 +3253,14 @@ class ViewSessionViewSet(
                 auth_status = authorized_links.get(str(share_link.id), {})
                 if auth_status.get('email_verified'):
                     viewer_email = auth_status.get('viewer_email')
+                    email_method = auth_status.get('email_method', '')
 
         # If no email is found from the above flows, check if the request is from an
         # authenticated user and record their email.
         if not viewer_email and self.request.user.is_authenticated:
             viewer_email = self.request.user.email
+            is_owner = share_link and (self.request.user == share_link.created_by or self.request.user.is_staff)
+            email_method = 'owner' if is_owner else 'account'
 
         viewer = None
         if viewer_email and share_link:
@@ -3276,6 +3286,7 @@ class ViewSessionViewSet(
             user_agent=user_agent,
             viewer=viewer,
             viewer_email=viewer_email,
+            email_verification_method=email_method if viewer_email else '',
             country=location_data.get('country_name') or '',
             city=location_data.get('city') or '',
             latitude=location_data.get('latitude'),
