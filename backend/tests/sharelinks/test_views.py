@@ -18,7 +18,8 @@ from documents.renderers.base import BasePreviewRenderer
 from sharelinks.models import (DataroomVisit, EmailVerificationToken, PageView,
                                PreviewSession, ShareLink,
                                ShareLinkDataroomSetting, ViewSession, LinkClick)
-from sharelinks.views import DATAROOM_VIEWDATA_DEFAULT_LIMIT
+from sharelinks.views import (DATAROOM_VIEWDATA_DEFAULT_LIMIT, _is_dataroom_folder_path_visible,
+                              _build_dataroom_breadcrumbs)
 import zipfile
 from io import BytesIO
 try:
@@ -4073,11 +4074,6 @@ class TestDataroomFolderDownloadView:
         Verify that _is_dataroom_folder_path_visible only queries visibility settings
         for the folder and its ancestors, avoiding full-table scans of all dataroom folders.
         """
-        from django.test.utils import CaptureQueriesContext
-        from django.db import connection
-        from sharelinks.views import _is_dataroom_folder_path_visible
-        from sharelinks.models import ShareLinkDataroomSetting
-
         link = dataroom_with_content_and_link['link']
         root_folder = dataroom_with_content_and_link['root_folder']
         subfolder = dataroom_with_content_and_link['subfolder']
@@ -4095,8 +4091,102 @@ class TestDataroomFolderDownloadView:
         settings_queries = [q for q in queries if table_name in q.lower()]
         assert len(settings_queries) == 1
         assert 'dataroom_folder_id' in settings_queries[0]
+        folder_table = DataroomFolder._meta.db_table
         # Must NOT load all folders in the dataroom via DataroomFolder.objects.filter(dataroom=...)
-        assert not any('WHERE "dataroom_folders"."dataroom_id"' in q for q in queries)
+        assert not any(f'FROM "{folder_table}" WHERE' in q for q in queries)
+
+    def test_view_data_single_document_does_not_scan_all_folders(self, public_client, dataroom_with_content_and_link):
+        """
+        Verify that fetching single document view-data builds breadcrumbs using
+        the prefetched folder hierarchy without scanning all dataroom folders.
+        """
+        link = dataroom_with_content_and_link['link']
+        ddoc_office = dataroom_with_content_and_link['ddoc_office']
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = public_client.get(f'/api/v1/links/{link.slug}/view-data/?dataroom_document_id={ddoc_office.id}')
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert len(data['dataroom_context']['breadcrumbs']) > 0
+        queries = [q['sql'] for q in ctx.captured_queries]
+        folder_table = DataroomFolder._meta.db_table
+        # Must NOT perform full-table scan of dataroom_folders
+        assert not any(f'FROM "{folder_table}" WHERE' in q for q in queries)
+
+    def test_view_data_catalog_root_does_not_scan_all_folders(self, public_client, dataroom_with_content_and_link):
+        """
+        Verify that browsing the dataroom root catalog does not load all folders
+        or all folder visibility settings.
+        """
+        link = dataroom_with_content_and_link['link']
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = public_client.get(f'/api/v1/links/{link.slug}/view-data/')
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data['current_parent_id'] is None
+        assert data['breadcrumbs'] == []
+        queries = [q['sql'] for q in ctx.captured_queries]
+        folder_table = DataroomFolder._meta.db_table
+        direct_folder_queries = [q for q in queries if f'FROM "{folder_table}" WHERE' in q]
+        assert len(direct_folder_queries) == 1
+        assert 'parent_id" IS NULL' in direct_folder_queries[0]
+        # Must NOT load all folder visibility settings without scoping to folder IDs
+        assert not any('WHERE "sharelinks_sharelinkdataroomsetting"."dataroom_folder_id" IS NOT NULL' in q for q in queries)
+
+    def test_view_data_catalog_subfolder_only_queries_ancestor_path(self, public_client, dataroom_with_content_and_link):
+        """
+        Verify that browsing a subfolder only queries the target folder and its ancestor visibility.
+        """
+        link = dataroom_with_content_and_link['link']
+        subfolder = dataroom_with_content_and_link['subfolder']
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = public_client.get(f'/api/v1/links/{link.slug}/view-data/?parent_id={subfolder.id}')
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data['current_parent_id'] == str(subfolder.id)
+        assert len(data['breadcrumbs']) == 2
+        queries = [q['sql'] for q in ctx.captured_queries]
+        folder_table = DataroomFolder._meta.db_table
+        folder_queries = [q for q in queries if f'FROM "{folder_table}"' in q]
+        assert len(folder_queries) == 2
+        for q in folder_queries:
+            where_part = q.split('WHERE', 1)[1] if 'WHERE' in q else ''
+            assert 'parent_id" =' in where_part or f'"{folder_table}"."id" =' in where_part
+        assert not any(f'FROM "{folder_table}" WHERE "{folder_table}"."dataroom_id" =' in q and 'AND' not in q for q in queries)
+
+    def test_build_dataroom_breadcrumbs_deep_hierarchy(self, dataroom, user):
+        """
+        Verify that building breadcrumbs for a hierarchy deeper than 4 levels
+        still produces correct top-down breadcrumbs.
+        """
+        folders = []
+        parent = None
+        for i in range(1, 7):
+            folder = DataroomFolder.objects.create(
+                dataroom=dataroom,
+                name=f"Level {i}",
+                parent=parent,
+                created_by=user,
+            )
+            folders.append(folder)
+            parent = folder
+
+        deepest_folder = folders[-1]
+        breadcrumbs = _build_dataroom_breadcrumbs(deepest_folder, dataroom=dataroom)
+
+        assert len(breadcrumbs) == 6
+        assert [b['name'] for b in breadcrumbs] == [f"Level {i}" for i in range(1, 7)]
+        assert [b['id'] for b in breadcrumbs] == [str(f.id) for f in folders]
+
+        # Also verify resolution when passing folder ID string
+        breadcrumbs_by_id = _build_dataroom_breadcrumbs(str(deepest_folder.id), dataroom=dataroom)
+        assert len(breadcrumbs_by_id) == 6
+        assert [b['name'] for b in breadcrumbs_by_id] == [f"Level {i}" for i in range(1, 7)]
 
     def test_non_admin_cannot_create_share_link_for_creatorless_document(self, api_client, user, organization):
         """

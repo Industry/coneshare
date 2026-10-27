@@ -11,6 +11,7 @@ from urllib.parse import urljoin
 import requests
 from pdf2image import convert_from_bytes
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseRedirect
@@ -428,38 +429,40 @@ def _build_share_link_public_meta(link: ShareLink, request=None) -> dict:
     }
 
 
-def _build_dataroom_breadcrumbs(start_folder_id, folder_map=None, dataroom=None, raise_on_missing=False):
+def _build_dataroom_breadcrumbs(start_folder_or_id, dataroom=None, raise_on_missing=False):
     """
-    Builds the breadcrumbs list from a start folder ID climbing up to the root parent.
+    Builds the breadcrumbs list from a start folder ID or DataroomFolder instance climbing up to the root parent.
     Returns a list of dicts: [{'id': ..., 'name': ...}, ...] in top-down order.
     Raises PermissionDenied if raise_on_missing is True and a folder is missing.
     """
-    if not start_folder_id:
+    if not start_folder_or_id:
         return []
 
-    if folder_map is None:
-        if not dataroom:
-            raise ValueError("Either folder_map or dataroom must be provided.")
-        all_dataroom_folders = list(
-            DataroomFolder.objects.filter(dataroom=dataroom).values('id', 'parent_id', 'name')
-        )
-        folder_map = {str(f['id']): f for f in all_dataroom_folders}
+    # 1. Normalize to a DataroomFolder instance (resolve from DB if passed an ID)
+    if isinstance(start_folder_or_id, DataroomFolder):
+        folder = start_folder_or_id
+    else:
+        qs = DataroomFolder.objects.filter(id=start_folder_or_id).select_related('parent__parent__parent__parent')
+        if dataroom:
+            qs = qs.filter(dataroom=dataroom)
+        try:
+            folder = qs.first()
+        except (ValueError, DjangoValidationError):
+            folder = None
 
-    ancestors = []
-    node_id = str(start_folder_id)
-    visited = set()
-    while node_id:
-        if node_id in visited:
-            break
-        visited.add(node_id)
-        node = folder_map.get(node_id)
-        if not node:
+        if not folder:
             if raise_on_missing:
                 raise PermissionDenied("You do not have permission to view this folder through this link.")
-            break
-        ancestors.append({'id': node['id'], 'name': node['name']})
-        parent_node_id = node.get('parent_id')
-        node_id = str(parent_node_id) if parent_node_id else None
+            return []
+
+    # 2. Traverse ancestors in memory via .parent and construct top-down breadcrumbs
+    ancestors = []
+    curr = folder
+    visited = set()
+    while curr and str(curr.id) not in visited:
+        visited.add(str(curr.id))
+        ancestors.append({'id': str(curr.id), 'name': curr.name})
+        curr = curr.parent
 
     return list(reversed(ancestors))
 
@@ -926,8 +929,9 @@ class ShareLinkViewDataView(APIView):
                 
                 dataroom = link.dataroom
                 
-                parent_folder_id = setting.dataroom_document.folder_id
-                breadcrumbs = _build_dataroom_breadcrumbs(parent_folder_id, dataroom=dataroom)
+                folder = setting.dataroom_document.folder
+                parent_folder_id = folder.id if folder else None
+                breadcrumbs = _build_dataroom_breadcrumbs(folder, dataroom=dataroom)
 
                 org = _get_share_link_organization(link)
                 branding_data = _build_dataroom_branding_payload(dataroom, org)
@@ -1153,46 +1157,28 @@ class ShareLinkViewDataView(APIView):
                 offset = 0
             limit = max(1, min(limit, DATAROOM_VIEWDATA_MAX_LIMIT))
             offset = max(0, offset)
-            all_dataroom_folders = list(
-                DataroomFolder.objects.filter(dataroom=dataroom).values('id', 'parent_id', 'name')
-            )
-            folder_map = {str(f['id']): f for f in all_dataroom_folders}
-            folder_visibility_rows = link.dataroom_settings.filter(
-                dataroom_folder__isnull=False,
-            ).values('dataroom_folder_id', 'is_visible')
-            folder_visibility_map = {
-                str(row['dataroom_folder_id']): row['is_visible']
-                for row in folder_visibility_rows
-            }
-
-            def _is_folder_path_visible(folder_id):
-                node_id = str(folder_id) if folder_id else None
-                while node_id:
-                    if not folder_visibility_map.get(node_id, False):
-                        return False
-                    node = folder_map.get(node_id)
-                    if not node:
-                        return False
-                    parent_node_id = node.get('parent_id')
-                    node_id = str(parent_node_id) if parent_node_id else None
-                return True
-
             current_parent_id = None
+            breadcrumbs = []
             if parent_id:
-                requested_parent = folder_map.get(str(parent_id))
+                try:
+                    requested_parent = DataroomFolder.objects.filter(
+                        id=parent_id, dataroom=dataroom
+                    ).select_related('parent__parent__parent__parent').first()
+                except (ValueError, DjangoValidationError):
+                    requested_parent = None
+
                 if not requested_parent:
                     return Response(
                         {"detail": "You do not have permission to view this folder through this link."},
                         status=status.HTTP_403_FORBIDDEN
                     )
-                if not _is_folder_path_visible(requested_parent['id']):
+                if not _is_dataroom_folder_path_visible(link, requested_parent):
                     return Response(
                         {"detail": "You do not have permission to view this folder through this link."},
                         status=status.HTTP_403_FORBIDDEN
                     )
-                current_parent_id = requested_parent['id']
-
-            breadcrumbs = _build_dataroom_breadcrumbs(current_parent_id, folder_map, raise_on_missing=True)
+                current_parent_id = requested_parent.id
+                breadcrumbs = _build_dataroom_breadcrumbs(requested_parent, dataroom=dataroom, raise_on_missing=True)
 
             # Fetch only direct children within the requested scope.
             folders_qs = DataroomFolder.objects.filter(dataroom=dataroom)
