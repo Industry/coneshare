@@ -2692,15 +2692,152 @@ class TestShareLinkPageView:
         response_page = public_client.get(page_url)
         assert response_page.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_request_access_requires_password_verification_when_password_configured(self, public_client, share_link_with_password_and_email):
+    def test_request_access_allowed_as_first_gate_when_password_configured(self, public_client, share_link_with_password_and_email):
         """
-        Test that submitting email on request-access requires prior password verification
-        when the share link is password-protected.
+        Verify that submitting email on request-access is accepted as the first gate
+        even when the share link is password-protected (Issue #405).
         """
+        # Step 1: Initial view-data prompts for email first
+        view_data_url = f'/api/v1/links/{share_link_with_password_and_email.slug}/view-data/'
+        response_view = public_client.get(view_data_url)
+        assert response_view.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response_view.data.get('protectionType') == 'email'
+
+        # Step 2: request-access with email succeeds without requiring password first
         request_url = f'/api/v1/links/{share_link_with_password_and_email.slug}/request-access/'
         response = public_client.post(request_url, {'email': 'viewer@example.com'})
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_verify_password_requires_email_verification_when_email_configured(self, public_client, share_link_with_password_and_email):
+        """
+        Verify that submitting password on verify-password requires prior email verification
+        when the share link requires email.
+        """
+        verify_url = f'/api/v1/links/{share_link_with_password_and_email.slug}/verify-password/'
+        response = public_client.post(verify_url, {'password': 'testpassword'})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-        assert response.data.get('protectionType') == 'password'
+        assert response.data.get('protectionType') == 'email'
+
+    def test_magic_link_confirmation_preserves_password_gate(self, public_client, user, document):
+        """
+        Verify that confirming an email verification magic link does not grant
+        password verification on a password-protected share link and preserves
+        existing session authorization keys.
+        """
+        link = ShareLink.objects.create(
+            document=document,
+            created_by=user,
+            password="secretpassword",
+            requires_email=True,
+            requires_email_verification=True,
+            require_nda=True,
+            nda_text="Terms",
+            nda_version=1,
+        )
+        token = EmailVerificationToken.objects.create(share_link=link, email="viewer@example.com")
+
+        # Pre-seed session with an existing key (e.g. nda_accepted_version) to verify in-place preservation
+        session = public_client.session
+        session['authorized_share_links'] = {
+            str(link.id): {
+                'nda_accepted_version': 1,
+            }
+        }
+        session.save()
+
+        # Step 1: GET view-data with token stages verification
+        view_url = f'/api/v1/links/{link.slug}/view-data/?accessToken={token.token}'
+        resp_stage = public_client.get(view_url)
+        assert resp_stage.status_code == status.HTTP_401_UNAUTHORIZED
+        assert resp_stage.data.get('protectionType') == 'email'
+        assert resp_stage.data.get('requiresConfirmation') is True
+
+        # Step 2: POST confirm-access consumes token
+        confirm_url = f'/api/v1/links/{link.slug}/verify-access-token/confirm/'
+        resp_confirm = public_client.post(confirm_url, {'token': token.token})
+        assert resp_confirm.status_code == status.HTTP_200_OK
+
+        # Verify existing session keys were preserved and not overwritten
+        session_after = public_client.session
+        auth_status = session_after.get('authorized_share_links', {}).get(str(link.id), {})
+        assert auth_status.get('email_verified') is True
+        assert auth_status.get('viewer_email') == 'viewer@example.com'
+        assert auth_status.get('nda_accepted_version') == 1
+        assert auth_status.get('password_verified') is not True
+
+        # Step 3: Verify that session continues to require password verification
+        resp_view_after = public_client.get(f'/api/v1/links/{link.slug}/view-data/')
+        assert resp_view_after.status_code == status.HTTP_401_UNAUTHORIZED
+        assert resp_view_after.data.get('protectionType') == 'password'
+
+        # Step 4: After verifying password, access is granted (since NDA was pre-accepted in session)
+        resp_pw = public_client.post(f'/api/v1/links/{link.slug}/verify-password/', {'password': 'secretpassword'})
+        assert resp_pw.status_code == status.HTTP_200_OK
+
+        resp_final = public_client.get(f'/api/v1/links/{link.slug}/view-data/')
+        assert resp_final.status_code == status.HTTP_200_OK
+
+    def test_sequential_gates_email_then_password_then_nda_end_to_end(self, public_client, user, document):
+        """
+        Verify end-to-end sequential gate progression: Email -> Password -> NDA.
+        """
+        link = ShareLink.objects.create(
+            document=document,
+            created_by=user,
+            requires_email=True,
+            requires_email_verification=False,
+            password="secretpassword",
+            require_nda=True,
+            nda_text="Confidential terms.",
+            nda_version=1,
+        )
+
+        view_url = f'/api/v1/links/{link.slug}/view-data/'
+
+        # Gate 1: Email prompted first
+        resp1 = public_client.get(view_url)
+        assert resp1.status_code == status.HTTP_401_UNAUTHORIZED
+        assert resp1.data.get('protectionType') == 'email'
+
+        # Attempting later gates directly fails
+        resp_pw_early = public_client.post(f'/api/v1/links/{link.slug}/verify-password/', {'password': 'secretpassword'})
+        assert resp_pw_early.status_code == status.HTTP_401_UNAUTHORIZED
+        assert resp_pw_early.data.get('protectionType') == 'email'
+
+        resp_nda_early = public_client.post(f'/api/v1/links/{link.slug}/accept-nda/', {})
+        assert resp_nda_early.status_code == status.HTTP_401_UNAUTHORIZED
+        assert resp_nda_early.data.get('protectionType') == 'email'
+
+        # Satisfy Gate 1: Email
+        resp_email = public_client.post(f'/api/v1/links/{link.slug}/request-access/', {'email': 'viewer@example.com'})
+        assert resp_email.status_code == status.HTTP_200_OK
+
+        # Gate 2: Password prompted second
+        resp2 = public_client.get(view_url)
+        assert resp2.status_code == status.HTTP_401_UNAUTHORIZED
+        assert resp2.data.get('protectionType') == 'password'
+
+        # Attempting NDA before password fails
+        resp_nda_before_pw = public_client.post(f'/api/v1/links/{link.slug}/accept-nda/', {})
+        assert resp_nda_before_pw.status_code == status.HTTP_401_UNAUTHORIZED
+        assert resp_nda_before_pw.data.get('protectionType') == 'password'
+
+        # Satisfy Gate 2: Password
+        resp_pw = public_client.post(f'/api/v1/links/{link.slug}/verify-password/', {'password': 'secretpassword'})
+        assert resp_pw.status_code == status.HTTP_200_OK
+
+        # Gate 3: NDA prompted third
+        resp3 = public_client.get(view_url)
+        assert resp3.status_code == status.HTTP_401_UNAUTHORIZED
+        assert resp3.data.get('protectionType') == 'nda'
+
+        # Satisfy Gate 3: NDA
+        resp_nda = public_client.post(f'/api/v1/links/{link.slug}/accept-nda/', {})
+        assert resp_nda.status_code == status.HTTP_200_OK
+
+        # All gates satisfied -> 200 OK
+        resp_final = public_client.get(view_url)
+        assert resp_final.status_code == status.HTTP_200_OK
 
     def test_accept_nda_requires_password_verification_when_password_configured(self, public_client, user, document):
         """

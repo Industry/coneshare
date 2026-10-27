@@ -48,10 +48,10 @@ api.interceptors.response.use(
       error.response?.status === 401 &&
       ['password', 'email', 'nda'].includes(error.response?.data?.protectionType);
 
-    const isInitialPasswordPrompt =
+    const isViewDataProtectionPrompt =
       error.response?.status === 401 &&
       originalRequest.url.includes('/view-data/') &&
-      error.response?.data?.protectionType === 'password';
+      ['password', 'email', 'nda'].includes(error.response?.data?.protectionType);
           
     // Check if the error is 401, not a retry, and not from a token-related endpoint or public link protect prompt
     if (
@@ -111,8 +111,8 @@ api.interceptors.response.use(
     // For other errors, show a toast, preferring translated/mapped error messages.
     const errorMessage = getLocalizedErrorMessage(error);
 
-    // Avoid showing a toast for the initial password prompt on the viewer page.
-    if (!isInitialPasswordPrompt && errorMessage) {
+    // Avoid showing an error toast for sequential gate prompts on the viewer page.
+    if (!isViewDataProtectionPrompt && errorMessage) {
       toast.error(errorMessage);
     }
 
