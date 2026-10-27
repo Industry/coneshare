@@ -546,15 +546,15 @@ def _verify_share_link_session_authorization(
 
     auth_status_dict = auth_status or {}
 
-    if link.password and not auth_status_dict.get('password_verified'):
-        return Response(
-            {"message": "This link is password-protected. Please enter the password to continue.", "protectionType": "password"},
-            status=status.HTTP_401_UNAUTHORIZED
-        ), None
-
     if link.requires_email and not auth_status_dict.get('email_verified'):
         return Response(
             {"message": "This link requires an email address to view.", "protectionType": "email"},
+            status=status.HTTP_401_UNAUTHORIZED
+        ), None
+
+    if link.password and not auth_status_dict.get('password_verified'):
+        return Response(
+            {"message": "This link is password-protected. Please enter the password to continue.", "protectionType": "password"},
             status=status.HTTP_401_UNAUTHORIZED
         ), None
 
@@ -573,6 +573,27 @@ def _verify_share_link_session_authorization(
     return None, auth_status_dict
 
 
+def _check_sequential_gate_prerequisites(link: ShareLink, auth_status: dict, target_gate: str):
+    """
+    Verify that prior sequential gates (email -> password) have been satisfied
+    before performing the action for `target_gate` ('password', 'nda').
+    Returns an error Response or None.
+    """
+    if target_gate in ('password', 'nda'):
+        if link.requires_email and not auth_status.get('email_verified'):
+            return Response(
+                {"message": "This link requires an email address to view.", "protectionType": "email"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+    if target_gate == 'nda':
+        if link.password and not auth_status.get('password_verified'):
+            return Response(
+                {"message": "This link is password-protected. Please enter the password to continue.", "protectionType": "password"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+    return None
+
+
 def _get_authorized_qna_view_session(request, link: ShareLink, view_session_id: str | None):
     # Every public Q&A endpoint authorizes its view session here, so this is the
     # single gate for the dataroom-level and link-level Q&A switches.
@@ -586,10 +607,12 @@ def _get_authorized_qna_view_session(request, link: ShareLink, view_session_id: 
         raise PermissionDenied("This link has expired.")
 
     auth_status = request.session.get('authorized_share_links', {}).get(str(link.id), {})
-    if link.password and not auth_status.get('password_verified'):
-        raise PermissionDenied("Password verification is required before using Q&A.")
     if link.requires_email and not auth_status.get('email_verified'):
         raise PermissionDenied("Email verification is required before using Q&A.")
+    if link.password and not auth_status.get('password_verified'):
+        raise PermissionDenied("Password verification is required before using Q&A.")
+    if link.require_nda and not _is_nda_accepted(link, request, auth_status):
+        raise PermissionDenied("NDA acceptance is required before using Q&A.")
 
     view_session = ViewSession.objects.select_related('viewer', 'share_link').filter(
         id=view_session_id,
@@ -1825,17 +1848,22 @@ class ShareLinkVerifyPasswordView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        authorized_links = request.session.get('authorized_share_links', {})
+        auth_status = authorized_links.get(str(link.id)) or {}
+        gate_error = _check_sequential_gate_prerequisites(link, auth_status, target_gate='password')
+        if gate_error:
+            return gate_error
+
         serializer = ShareLinkPasswordSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         password = serializer.validated_data['password']
         if secrets.compare_digest(password, link.password):
-            # Password is correct. Store granular authorization in the session.
-            authorized_links = request.session.get('authorized_share_links', {})
-            if str(link.id) not in authorized_links:
-                authorized_links[str(link.id)] = {}
-            authorized_links[str(link.id)]['password_verified'] = True
+            # Password is correct. Store granular authorization in the session without duplicate session read.
+            current_status = authorized_links.get(str(link.id), {})
+            current_status['password_verified'] = True
+            authorized_links[str(link.id)] = current_status
             request.session['authorized_share_links'] = authorized_links
             return Response({"message": "Password verified successfully."}, status=status.HTTP_200_OK)
         else:
@@ -1877,17 +1905,9 @@ class ShareLinkAcceptNDAView(APIView):
 
         authorized_links = request.session.get('authorized_share_links', {})
         auth_status = authorized_links.get(str(link.id)) or {}
-        if link.password and not auth_status.get('password_verified'):
-            return Response(
-                {"message": "This link is password-protected. Please enter the password to continue.", "protectionType": "password"},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-
-        if link.requires_email and not auth_status.get('email_verified'):
-            return Response(
-                {"message": "This link requires an email address to view.", "protectionType": "email"},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+        gate_error = _check_sequential_gate_prerequisites(link, auth_status, target_gate='nda')
+        if gate_error:
+            return gate_error
 
         view_session_id = request.data.get('view_session_id')
 
@@ -2007,14 +2027,6 @@ class ShareLinkRequestAccessView(APIView):
             return Response(
                 {"message": "This link does not require an email address."},
                 status=status.HTTP_400_BAD_REQUEST
-            )
-
-        authorized_links = request.session.get('authorized_share_links', {})
-        auth_status = authorized_links.get(str(link.id)) or {}
-        if link.password and not auth_status.get('password_verified'):
-            return Response(
-                {"message": "This link is password-protected. Please enter the password to continue.", "protectionType": "password"},
-                status=status.HTTP_401_UNAUTHORIZED
             )
 
         serializer = ShareLinkEmailSerializer(data=request.data)
@@ -2145,13 +2157,12 @@ class ShareLinkConfirmAccessView(APIView):
                 if verification.is_expired() or verification.share_link != link:
                     return Response({"message": "The verification link has expired or is invalid."}, status=status.HTTP_400_BAD_REQUEST)
 
-                # Authorize the session
+                # Authorize the session for email verification only
                 authorized_links = request.session.get('authorized_share_links', {})
-                authorized_links[str(link.id)] = {
-                    'password_verified': True,
-                    'email_verified': True,
-                    'viewer_email': verification.email,
-                }
+                current_status = authorized_links.get(str(link.id), {})
+                current_status['email_verified'] = True
+                current_status['viewer_email'] = verification.email
+                authorized_links[str(link.id)] = current_status
                 request.session['authorized_share_links'] = authorized_links
                 
                 _dispatch_automation_event(

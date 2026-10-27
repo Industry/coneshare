@@ -168,6 +168,62 @@ def test_email_gated_qna_requires_view_session_email_to_match_verified_email(pub
     assert QnAThread.objects.count() == 0
 
 
+def test_qna_endpoints_require_nda_acceptance_when_nda_configured(public_client, share_link):
+    share_link.require_nda = True
+    share_link.nda_text = "Confidential terms."
+    share_link.nda_version = 1
+    share_link.save(update_fields=['require_nda', 'nda_text', 'nda_version'])
+
+    view_session = ViewSession.objects.create(
+        share_link=share_link,
+        viewer_email='viewer@example.com',
+    )
+
+    # 1. Without NDA accepted in session -> 403 Forbidden
+    response = public_client.get(
+        f'/api/v1/links/{share_link.slug}/qna-threads/?view_session_id={view_session.id}'
+    )
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.data['detail'] == "NDA acceptance is required before using Q&A."
+
+    post_response = public_client.post(
+        f'/api/v1/links/{share_link.slug}/qna-threads/',
+        {
+            'view_session_id': str(view_session.id),
+            'subject': 'NDA question',
+            'body': 'This should fail before NDA acceptance.',
+        },
+        format='json',
+    )
+    assert post_response.status_code == status.HTTP_403_FORBIDDEN
+    assert post_response.data['detail'] == "NDA acceptance is required before using Q&A."
+
+    # 2. With NDA accepted in session -> succeeds
+    session = public_client.session
+    session['authorized_share_links'] = {
+        str(share_link.id): {
+            'nda_accepted_version': share_link.nda_version,
+        }
+    }
+    session.save()
+
+    response = public_client.get(
+        f'/api/v1/links/{share_link.slug}/qna-threads/?view_session_id={view_session.id}'
+    )
+    assert response.status_code == status.HTTP_200_OK
+
+    post_response = public_client.post(
+        f'/api/v1/links/{share_link.slug}/qna-threads/',
+        {
+            'view_session_id': str(view_session.id),
+            'subject': 'NDA question',
+            'body': 'This should succeed after NDA acceptance.',
+        },
+        format='json',
+    )
+    assert post_response.status_code == status.HTTP_201_CREATED
+
+
 def test_dataroom_viewer_can_create_and_list_root_qna_thread(public_client, dataroom, user):
     link = ShareLink.objects.create(dataroom=dataroom, created_by=user)
     view_session = ViewSession.objects.create(share_link=link)

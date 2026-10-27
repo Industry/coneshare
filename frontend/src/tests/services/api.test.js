@@ -14,6 +14,14 @@ import {
 } from "../../services/api";
 import { DATAROOM_VIEWER_PAGE_SIZE } from "../../constants/pagination";
 import axios from "axios";
+import { toast } from "sonner";
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}));
 
 // Mock axios. The factory ensures that when api.js calls axios.create(), it gets
 // a real axios instance, while the top-level axios.post used for token
@@ -222,6 +230,41 @@ describe("API Service Interceptors", () => {
 
       expect(axios.post).not.toHaveBeenCalled();
       expect(window.location.href).toBe("");
+    });
+
+    it.each(["password", "email", "nda"])(
+      "should suppress error toast on /view-data/ when 401 protectionType is %s",
+      async (protectionType) => {
+        const originalError = {
+          response: {
+            status: 401,
+            data: { message: `${protectionType} required`, protectionType },
+          },
+          config: { url: "/links/test-slug/view-data/" },
+        };
+        mockAdapter.mockRejectedValue(originalError);
+
+        await expect(api.get("/links/test-slug/view-data/")).rejects.toBe(originalError);
+
+        expect(toast.error).not.toHaveBeenCalled();
+        expect(axios.post).not.toHaveBeenCalled();
+        expect(window.location.href).toBe("");
+      }
+    );
+
+    it("should display error toast for 401 on non-view-data endpoints (e.g. invalid password)", async () => {
+      const originalError = {
+        response: {
+          status: 401,
+          data: { message: "Invalid password.", protectionType: "password" },
+        },
+        config: { url: "/links/test-slug/verify-password/" },
+      };
+      mockAdapter.mockRejectedValue(originalError);
+
+      await expect(api.post("/links/test-slug/verify-password/", { password: "wrong" })).rejects.toBe(originalError);
+
+      expect(toast.error).toHaveBeenCalledWith("Invalid password.");
     });
   });
 
