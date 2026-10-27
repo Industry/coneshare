@@ -810,6 +810,26 @@ class TestShareLinkViewDataView:
         response = public_client.get(f'/api/v1/links/{share_link_with_password.slug}/view-data/')
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
+    def test_get_share_link_data_dataroom_catalog_populates_effective_watermark_text(self, public_client, dataroom, user):
+        """
+        Verify that fetching dataroom catalog view data populates effective and resolved
+        watermark text when enable_watermark=True but watermark_text is empty.
+        """
+        link = ShareLink.objects.create(
+            dataroom=dataroom,
+            created_by=user,
+            enable_watermark=True,
+            watermark_text="",
+        )
+        response = public_client.get(f'/api/v1/links/{link.slug}/view-data/')
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data['link_type'] == 'dataroom'
+        link_settings = data['link_settings']
+        assert link_settings['enable_watermark'] is True
+        assert link_settings['watermark_text'] == 'CONFIDENTIAL - {{email}}'
+        assert link_settings['resolved_watermark_text'] != ''
+
 
 @pytest.mark.django_db
 class TestDataroomVisitTracking:
@@ -2137,6 +2157,29 @@ class TestShareLinkViewSet:
         setting.refresh_from_db()
         assert setting.is_visible is False
 
+    def test_bulk_update_dataroom_settings_enabling_watermark_populates_default_text(self, api_client, dataroom, document, user):
+        """
+        Verify that enabling watermark on a dataroom item populates default watermark text
+        if link watermark_text is empty.
+        """
+        DataroomDocument.objects.create(dataroom=dataroom, document=document)
+        link = ShareLink.objects.create(
+            dataroom=dataroom,
+            created_by=user,
+            enable_watermark=False,
+            watermark_text="",
+        )
+        setting = link.dataroom_settings.first()
+        assert setting is not None
+
+        url = f'/api/v1/share-links/{link.id}/dataroom-settings/'
+        update_data = [{'id': str(setting.id), 'enable_watermark': True}]
+        response = api_client.patch(url, update_data, format='json')
+
+        assert response.status_code == status.HTTP_200_OK
+        link.refresh_from_db()
+        assert link.watermark_text == 'CONFIDENTIAL - {{email}}'
+
     def test_bulk_update_dataroom_settings_malformed_data(self, api_client, dataroom, document, user):
         """Test that requests with malformed data are rejected."""
         DataroomDocument.objects.create(dataroom=dataroom, document=document)
@@ -2780,10 +2823,10 @@ class TestShareLinkPageView:
 
     @override_settings(SITE_DOMAIN="http://test.coneshare.com")
     @patch('sharelinks.views.fileserver_client.generate_download_url')
-    def test_get_page_when_watermark_enabled_but_no_watermark_text_succeeds(self, mock_fs_download_url, authorized_client, share_link_with_password, document_with_pages):
+    def test_get_page_when_watermark_enabled_but_no_watermark_text_fails(self, mock_fs_download_url, authorized_client, share_link_with_password, document_with_pages):
         """
-        Test that if enable_watermark is True but watermark_text is empty,
-        watermarking cannot be applied so unwatermarked page serving succeeds.
+        Test that if enable_watermark is True, unwatermarked page serving is rejected
+        even if watermark_text was initially empty.
         """
         share_link_with_password.document = document_with_pages
         share_link_with_password.enable_watermark = True
@@ -2794,7 +2837,8 @@ class TestShareLinkPageView:
         url = f'/api/v1/links/{share_link_with_password.slug}/page/1/'
         response = authorized_client.get(url)
 
-        assert response.status_code == status.HTTP_302_FOUND
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert "Watermarking is enabled for this file" in response.data['message']
 
 
 @pytest.mark.django_db
@@ -3480,6 +3524,73 @@ class TestWatermarkingViews:
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert "permission to download" in response.data['message']
 
+    @patch('sharelinks.views.requests.get')
+    @patch('sharelinks.views.fileserver_client.generate_download_url')
+    def test_dataroom_item_watermark_enforced_when_link_watermark_text_empty(
+        self, mock_fs_download, mock_requests_get, public_client, dataroom_with_watermarked_link
+    ):
+        """
+        Verify that an item with enable_watermark=True enforces watermarking even if link.watermark_text is empty.
+        """
+        mock_fs_download.return_value = "http://core:8080/files/download/token"
+        pdf_content = b'%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj\nxref\n0 4\n0000000000 65535 f \n0000000010 00000 n \n0000000059 00000 n \n0000000112 00000 n \ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n178\n%%EOF'
+        img = Image.new('RGB', (100, 100), color='white')
+        img_buffer = BytesIO()
+        img.save(img_buffer, 'JPEG')
+        img_buffer.seek(0)
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.content = img_buffer.getvalue()
+        mock_requests_get.return_value = mock_response
+
+        link = dataroom_with_watermarked_link['link']
+        document = dataroom_with_watermarked_link['document']
+        ddoc = dataroom_with_watermarked_link['ddoc']
+
+        # Empty the link-level watermark
+        link.enable_watermark = False
+        link.watermark_text = ""
+        link.save()
+
+        # Enable watermark on the item
+        setting = link.dataroom_settings.get(dataroom_document=ddoc)
+        setting.enable_watermark = True
+        setting.allow_download = True
+        setting.save()
+
+        self._authorize_link_session(public_client, link)
+
+        # 1. view-data: must flag watermark, use render-page URL, and strip text_content
+        url_view_data = f'/api/v1/links/{link.slug}/view-data/?dataroom_document_id={ddoc.id}'
+        resp_view_data = public_client.get(url_view_data)
+        assert resp_view_data.status_code == status.HTTP_200_OK
+        assert resp_view_data.data['link_settings']['enable_watermark'] is True
+        assert resp_view_data.data['link_settings']['resolved_watermark_text'] != ''
+        assert '/render-page/1/' in resp_view_data.data['pages'][0]['url']
+        assert resp_view_data.data['pages'][0]['text_content'] == {'lines': []}
+
+        # 2. direct page access (/page/1/): must return 403 Forbidden
+        url_page = f'/api/v1/links/{link.slug}/page/1/?dataroom_document_id={ddoc.id}'
+        resp_page = public_client.get(url_page)
+        assert resp_page.status_code == status.HTTP_403_FORBIDDEN
+
+        # 3. render-page (/render-page/1/): must return watermarked image
+        url_render = f'/api/v1/links/{link.slug}/render-page/1/?dataroom_document_id={ddoc.id}'
+        resp_render = public_client.get(url_render, REMOTE_ADDR='192.168.1.1')
+        assert resp_render.status_code == status.HTTP_200_OK
+        assert resp_render.get('Content-Type') == 'image/jpeg'
+
+        # 4. download-file: must generate and serve watermarked PDF
+        mock_response.content = pdf_content
+
+        url_download = f'/api/v1/links/{link.slug}/download-file/?dataroom_document_id={ddoc.id}'
+        resp_download = public_client.get(url_download, REMOTE_ADDR='192.168.1.1')
+        assert resp_download.status_code == status.HTTP_200_OK
+        assert resp_download.get('Content-Type') == 'application/pdf'
+        assert resp_download.content.startswith(b'%PDF-')
+        assert len(resp_download.content) > len(pdf_content)
+
     def test_sharelink_file_download_view_records_dataroom_visit_downloaded_at(self, public_client, dataroom, user, document):
         """Test that GET download-file records downloaded_at on DataroomVisit when view_session_id is present."""
         from datarooms.models import DataroomDocument
@@ -3794,6 +3905,41 @@ class TestDataroomFolderDownloadView:
             content = zf.read('Root_Folder/test_image.jpg')
             assert content == b"watermarked image content"
 
+    @patch('sharelinks.views.requests.get')
+    @patch('sharelinks.views.fileserver_client.generate_download_url')
+    @patch('sharelinks.views._generate_watermarked_pdf')
+    def test_download_folder_applies_watermark_when_link_watermark_text_empty(
+        self, mock_generate_pdf, mock_fs_download, mock_requests_get, public_client, dataroom_with_content_and_link
+    ):
+        """
+        Verify that folder ZIP download watermarks documents where enable_watermark=True
+        even if link.watermark_text is empty.
+        """
+        mock_fs_download.return_value = "http://core:8080/files/download/token"
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.content = b"file content"
+        mock_requests_get.return_value = mock_response
+
+        link = dataroom_with_content_and_link['link']
+        root_folder = dataroom_with_content_and_link['root_folder']
+        ddoc_pdf = dataroom_with_content_and_link['ddoc_pdf']
+
+        link.watermark_text = ""
+        link.save()
+
+        setting = link.dataroom_settings.get(dataroom_document=ddoc_pdf)
+        setting.enable_watermark = True
+        setting.save()
+
+        mock_generate_pdf.return_value = BytesIO(b"watermarked pdf content")
+
+        url = f'/api/v1/links/{link.slug}/download-folder/{root_folder.id}/'
+        response = public_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_generate_pdf.assert_called_once()
+
     def test_download_folder_password_protected_fails(self, public_client, dataroom_with_content_and_link):
         link = dataroom_with_content_and_link['link']
         root_folder = dataroom_with_content_and_link['root_folder']
@@ -3805,6 +3951,152 @@ class TestDataroomFolderDownloadView:
         response = public_client.get(url)
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_download_folder_denied_when_folder_not_visible(self, public_client, dataroom_with_content_and_link):
+        """
+        Verify that folder download is denied when the target folder setting has is_visible=False.
+        """
+        link = dataroom_with_content_and_link['link']
+        root_folder = dataroom_with_content_and_link['root_folder']
+
+        setting = link.dataroom_settings.get(dataroom_folder=root_folder)
+        setting.is_visible = False
+        setting.allow_download = True
+        setting.save()
+
+        url = f'/api/v1/links/{link.slug}/download-folder/{root_folder.id}/'
+        response = public_client.get(url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_download_folder_denied_when_ancestor_folder_not_visible(self, public_client, dataroom_with_content_and_link):
+        """
+        Verify that folder download is denied when an ancestor folder in the path has is_visible=False.
+        """
+        link = dataroom_with_content_and_link['link']
+        root_folder = dataroom_with_content_and_link['root_folder']
+        subfolder = dataroom_with_content_and_link['subfolder']
+
+        # Root folder is hidden, but subfolder is marked visible and downloadable
+        root_setting = link.dataroom_settings.get(dataroom_folder=root_folder)
+        root_setting.is_visible = False
+        root_setting.save()
+
+        sub_setting = link.dataroom_settings.get(dataroom_folder=subfolder)
+        sub_setting.is_visible = True
+        sub_setting.allow_download = True
+        sub_setting.save()
+
+        url = f'/api/v1/links/{link.slug}/download-folder/{subfolder.id}/'
+        response = public_client.get(url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_view_data_document_in_hidden_folder_denied(self, public_client, dataroom_with_content_and_link):
+        """
+        Verify that fetching document view data is denied when its parent folder is not visible.
+        """
+        link = dataroom_with_content_and_link['link']
+        subfolder = dataroom_with_content_and_link['subfolder']
+        ddoc_office = dataroom_with_content_and_link['ddoc_office']
+
+        sub_setting = link.dataroom_settings.get(dataroom_folder=subfolder)
+        sub_setting.is_visible = False
+        sub_setting.save()
+
+        doc_setting = link.dataroom_settings.get(dataroom_document=ddoc_office)
+        doc_setting.is_visible = True
+        doc_setting.save()
+
+        url = f'/api/v1/links/{link.slug}/view-data/?dataroom_document_id={ddoc_office.id}'
+        response = public_client.get(url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_page_view_document_in_hidden_folder_denied(self, public_client, dataroom_with_content_and_link):
+        """
+        Verify that page view rendering is denied when the document resides in a hidden folder.
+        """
+        link = dataroom_with_content_and_link['link']
+        subfolder = dataroom_with_content_and_link['subfolder']
+        ddoc_office = dataroom_with_content_and_link['ddoc_office']
+
+        session = public_client.session
+        session['authorized_share_links'] = {
+            str(link.id): {'password_verified': True, 'email_verified': True}
+        }
+        session.save()
+
+        sub_setting = link.dataroom_settings.get(dataroom_folder=subfolder)
+        sub_setting.is_visible = False
+        sub_setting.save()
+
+        doc_setting = link.dataroom_settings.get(dataroom_document=ddoc_office)
+        doc_setting.is_visible = True
+        doc_setting.save()
+
+        url = f'/api/v1/links/{link.slug}/page/1/?dataroom_document_id={ddoc_office.id}'
+        response = public_client.get(url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_file_download_document_in_hidden_folder_denied(self, public_client, dataroom_with_content_and_link):
+        """
+        Verify that direct file download is denied when the document resides in a hidden folder.
+        """
+        link = dataroom_with_content_and_link['link']
+        subfolder = dataroom_with_content_and_link['subfolder']
+        ddoc_office = dataroom_with_content_and_link['ddoc_office']
+
+        session = public_client.session
+        session['authorized_share_links'] = {
+            str(link.id): {'password_verified': True, 'email_verified': True}
+        }
+        session.save()
+
+        sub_setting = link.dataroom_settings.get(dataroom_folder=subfolder)
+        sub_setting.is_visible = False
+        sub_setting.save()
+
+        doc_setting = link.dataroom_settings.get(dataroom_document=ddoc_office)
+        doc_setting.is_visible = True
+        doc_setting.allow_download = True
+        doc_setting.save()
+
+        url = f'/api/v1/links/{link.slug}/download-file/?dataroom_document_id={ddoc_office.id}'
+        response = public_client.get(url)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_is_dataroom_folder_path_visible_only_queries_ancestor_path(self, dataroom_with_content_and_link):
+        """
+        Verify that _is_dataroom_folder_path_visible only queries visibility settings
+        for the folder and its ancestors, avoiding full-table scans of all dataroom folders.
+        """
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+        from sharelinks.views import _is_dataroom_folder_path_visible
+        from sharelinks.models import ShareLinkDataroomSetting
+
+        link = dataroom_with_content_and_link['link']
+        root_folder = dataroom_with_content_and_link['root_folder']
+        subfolder = dataroom_with_content_and_link['subfolder']
+
+        link.dataroom_settings.filter(dataroom_folder__in=[root_folder, subfolder]).update(is_visible=True)
+
+        table_name = ShareLinkDataroomSetting._meta.db_table
+
+        with CaptureQueriesContext(connection) as ctx:
+            is_visible = _is_dataroom_folder_path_visible(link, subfolder)
+
+        assert is_visible is True
+        queries = [q['sql'] for q in ctx.captured_queries]
+        # Must query dataroom_settings filtering by ancestor IDs
+        settings_queries = [q for q in queries if table_name in q.lower()]
+        assert len(settings_queries) == 1
+        assert 'dataroom_folder_id' in settings_queries[0]
+        # Must NOT load all folders in the dataroom via DataroomFolder.objects.filter(dataroom=...)
+        assert not any('WHERE "dataroom_folders"."dataroom_id"' in q for q in queries)
 
     def test_non_admin_cannot_create_share_link_for_creatorless_document(self, api_client, user, organization):
         """
