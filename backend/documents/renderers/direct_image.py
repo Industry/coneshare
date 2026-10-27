@@ -120,7 +120,7 @@ class DirectImageRenderer(BasePreviewRenderer):
             if enable_watermark_override is not None
             else (share_link.enable_watermark if share_link else False)
         )
-        is_watermarked = bool(share_link and watermark_enabled and share_link.watermark_text)
+        is_watermarked = bool(share_link and watermark_enabled)
 
         url = self._build_page_url(
             page_number=1,

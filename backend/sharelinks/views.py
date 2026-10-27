@@ -66,6 +66,53 @@ logger = logging.getLogger(__name__)
 DATAROOM_VIEWDATA_DEFAULT_LIMIT = 40
 DATAROOM_VIEWDATA_MAX_LIMIT = 200
 
+DEFAULT_WATERMARK_TEMPLATE = "CONFIDENTIAL - {{email}}"
+
+
+def get_effective_watermark_text(link: ShareLink | None) -> str:
+    """
+    Returns the configured watermark template text or falls back to the default
+    CONFIDENTIAL template when link.watermark_text is empty.
+    """
+    if not link:
+        return DEFAULT_WATERMARK_TEMPLATE
+    text = (link.watermark_text or "").strip()
+    return text if text else DEFAULT_WATERMARK_TEMPLATE
+
+
+def _is_dataroom_folder_path_visible(link: ShareLink, folder: DataroomFolder | None) -> bool:
+    """
+    Check if a folder and all its ancestor folders are visible under the given share link.
+    Traverses up the hierarchy via `folder.parent` and only queries visibility settings
+    for the specific ancestor path instead of querying all folders in the dataroom.
+    """
+    if not folder:
+        return True
+
+    if folder.dataroom_id and link.dataroom_id and folder.dataroom_id != link.dataroom_id:
+        return False
+
+    ancestor_ids = []
+    curr = folder
+    visited = set()
+    while curr and str(curr.id) not in visited:
+        visited.add(str(curr.id))
+        ancestor_ids.append(str(curr.id))
+        curr = curr.parent
+
+    visibility_rows = link.dataroom_settings.filter(
+        dataroom_folder_id__in=ancestor_ids,
+    ).values_list('dataroom_folder_id', 'is_visible')
+    visibility_map = {
+        str(row[0]): row[1]
+        for row in visibility_rows
+    }
+
+    for folder_id in ancestor_ids:
+        if not visibility_map.get(folder_id, False):
+            return False
+    return True
+
 
 def _resolve_dataroom_document_setting(link: ShareLink, requested_dataroom_document_id: str, visible_only: bool = True):
     """
@@ -85,7 +132,11 @@ def _resolve_dataroom_document_setting(link: ShareLink, requested_dataroom_docum
 
     # Use .get() intentionally: this should be unique per (share_link, dataroom_document).
     # DoesNotExist is handled by callers as a permission failure.
-    return base_qs.get(dataroom_document_id=requested_dataroom_document_id)
+    setting = base_qs.get(dataroom_document_id=requested_dataroom_document_id)
+    if visible_only and setting.dataroom_document.folder:
+        if not _is_dataroom_folder_path_visible(link, setting.dataroom_document.folder):
+            raise ShareLinkDataroomSetting.DoesNotExist()
+    return setting
 
 
 def _to_iso_datetime(value):
@@ -375,35 +426,6 @@ def _build_share_link_public_meta(link: ShareLink, request=None) -> dict:
         "logo_mode": logo_mode,
         "resolved_brand_logo_url": resolved_brand_logo_url,
     }
-
-
-def _is_dataroom_folder_path_visible(link: ShareLink, folder: DataroomFolder | None) -> bool:
-    if not folder:
-        return True
-
-    folder_rows = DataroomFolder.objects.filter(dataroom=link.dataroom).values('id', 'parent_id')
-    folder_parent_map = {
-        str(row['id']): str(row['parent_id']) if row['parent_id'] else None
-        for row in folder_rows
-    }
-    visibility_rows = link.dataroom_settings.filter(
-        dataroom_folder__isnull=False,
-    ).values('dataroom_folder_id', 'is_visible')
-    visibility_map = {
-        str(row['dataroom_folder_id']): row['is_visible']
-        for row in visibility_rows
-    }
-
-    node_id = str(folder.id)
-    visited = set()
-    while node_id:
-        if node_id in visited:
-            break
-        visited.add(node_id)
-        if not visibility_map.get(node_id, False):
-            return False
-        node_id = folder_parent_map.get(node_id)
-    return True
 
 
 def _build_dataroom_breadcrumbs(start_folder_id, folder_map=None, dataroom=None, raise_on_missing=False):
@@ -765,6 +787,11 @@ class ShareLinkViewSet(viewsets.ModelViewSet):
 
         try:
             with transaction.atomic():
+                has_watermark_enabled = any(item.get('enable_watermark') is True for item in settings_to_update)
+                if has_watermark_enabled and not (share_link.watermark_text or '').strip():
+                    share_link.watermark_text = DEFAULT_WATERMARK_TEMPLATE
+                    share_link.save(update_fields=['watermark_text'])
+
                 # TODO: potential N+1 query problem!
                 for item in settings_to_update:
                     setting_id = item.pop('id')
@@ -1008,7 +1035,8 @@ class ShareLinkViewDataView(APIView):
                 )
 
             download_url = None
-            is_watermarked = enable_watermark and link.watermark_text
+            effective_watermark_text = get_effective_watermark_text(link)
+            is_watermarked = bool(enable_watermark)
             if allow_download:
                 if is_watermarked:
                     base_url = f"/api/v1/links/{link.slug}/download-file/"
@@ -1073,7 +1101,7 @@ class ShareLinkViewDataView(APIView):
             # The raw template (e.g. "{{ip-address}} {{email}}") is resolved here so
             # the client does not need to know the viewer's email or IP.
             resolved_watermark_text = (
-                _render_watermark_text(link.watermark_text, request, viewer_email=viewer_email)
+                _render_watermark_text(effective_watermark_text, request, viewer_email=viewer_email)
                 if is_watermarked else ''
             )
 
@@ -1100,7 +1128,9 @@ class ShareLinkViewDataView(APIView):
                     "allow_download": allow_download,
                     "enable_qna": link.qna_enabled,
                     "enable_watermark": enable_watermark,
-                    "watermark_text": link.watermark_text,
+                    # Configured template string (e.g. "CONFIDENTIAL - {{email}}") for metadata and backward compatibility.
+                    "watermark_text": effective_watermark_text if is_watermarked else link.watermark_text,
+                    # Interpolated final text (with {{email}}, {{ip-address}}, etc.) for client-side visual overlays (PDF.js, Markdown, Spreadsheet).
                     "resolved_watermark_text": resolved_watermark_text,
                     "require_nda": link.require_nda,
                 }
@@ -1285,6 +1315,15 @@ class ShareLinkViewDataView(APIView):
             org = _get_share_link_organization(link)
             branding_data = _build_dataroom_branding_payload(dataroom, org)
 
+            authorized_links = request.session.get('authorized_share_links', {})
+            auth_status = authorized_links.get(str(link.id), {})
+            viewer_email = auth_status.get('viewer_email', '')
+            effective_watermark_text = get_effective_watermark_text(link)
+            resolved_watermark_text = (
+                _render_watermark_text(effective_watermark_text, request, viewer_email=viewer_email)
+                if link.enable_watermark else ''
+            )
+
             response_data = {
                 'link_type': 'dataroom',
                 'id': dataroom.id,
@@ -1309,7 +1348,10 @@ class ShareLinkViewDataView(APIView):
                     'allow_download': link.allow_download,
                     'enable_qna': link.qna_enabled,
                     'enable_watermark': link.enable_watermark,
-                    'watermark_text': link.watermark_text,
+                    # Configured template string (e.g. "CONFIDENTIAL - {{email}}") for metadata and backward compatibility.
+                    'watermark_text': effective_watermark_text if link.enable_watermark else link.watermark_text,
+                    # Interpolated final text (with {{email}}, {{ip-address}}, etc.) for client-side visual overlays (PDF.js, Markdown, Spreadsheet).
+                    'resolved_watermark_text': resolved_watermark_text,
                     'require_nda': link.require_nda,
                 }
             }
@@ -2219,7 +2261,7 @@ class ShareLinkPageView(APIView):
         if document.type == 'video':
             watermark_enabled = False
 
-        if watermark_enabled and link.watermark_text:
+        if watermark_enabled:
             return Response(
                 {"message": "Watermarking is enabled for this file. Unwatermarked pages cannot be served directly."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -2297,7 +2339,7 @@ class WatermarkedPageRenderView(APIView):
         else:
             return Response({"message": "Invalid link target."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not watermark_enabled_for_item or not link.watermark_text:
+        if not watermark_enabled_for_item:
             return Response({"message": "Watermarking is not enabled for this file."}, status=status.HTTP_400_BAD_REQUEST)
 
         primary_version = document.versions.filter(is_primary=True).first()
@@ -2312,10 +2354,11 @@ class WatermarkedPageRenderView(APIView):
             return Response({"message": "Page not found."}, status=status.HTTP_404_NOT_FOUND)
 
         viewer_email = auth_status.get('viewer_email', '')
+        effective_watermark_text = get_effective_watermark_text(link)
 
         # Generate an ETag based on factors that would change the output image.
         ip_address = get_client_ip(request) or ''
-        etag_source = f"{source_image_key}-{link.updated_at.isoformat()}-{link.watermark_text}-{ip_address}-{viewer_email}"
+        etag_source = f"{source_image_key}-{link.updated_at.isoformat()}-{effective_watermark_text}-{ip_address}-{viewer_email}"
         etag = hashlib.md5(etag_source.encode()).hexdigest()
 
         # Check against the If-None-Match header from the client.
@@ -2330,7 +2373,7 @@ class WatermarkedPageRenderView(APIView):
             response.raise_for_status()
             image = Image.open(BytesIO(response.content)).convert("RGBA")
 
-            watermark_text = _render_watermark_text(link.watermark_text, request, viewer_email=viewer_email)
+            watermark_text = _render_watermark_text(effective_watermark_text, request, viewer_email=viewer_email)
             
             watermarked_image = _apply_watermark_to_image(image, watermark_text)
 
@@ -2735,7 +2778,8 @@ class ShareLinkFileDownloadView(APIView):
         if not primary_version:
             return Response({"message": "Document version not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if enable_watermark and link.watermark_text:
+        if enable_watermark:
+            effective_watermark_text = get_effective_watermark_text(link)
             authorized_links = request.session.get('authorized_share_links', {})
             auth_status = authorized_links.get(str(link.id), {})
             viewer_email = auth_status.get('viewer_email', '')
@@ -2747,7 +2791,7 @@ class ShareLinkFileDownloadView(APIView):
             try:
                 if document.type == 'image':
                     image_buffer, content_type = _generate_watermarked_image(
-                        document, primary_version, link.watermark_text, request, viewer_email
+                        document, primary_version, effective_watermark_text, request, viewer_email
                     )
                     response = HttpResponse(image_buffer, content_type=content_type)
                     # Ensure filename has .jpg extension since we're creating a JPEG
@@ -2758,9 +2802,9 @@ class ShareLinkFileDownloadView(APIView):
                 # Fallback for PDF and Office documents which become PDF
                 flatten_active = get_dynamic_setting('FLATTEN_WATERMARKED_DOWNLOADS')
                 if flatten_active:
-                    pdf_buffer = _generate_flattened_watermarked_pdf(document, primary_version, link.watermark_text, request, viewer_email)
+                    pdf_buffer = _generate_flattened_watermarked_pdf(document, primary_version, effective_watermark_text, request, viewer_email)
                 else:
-                    pdf_buffer = _generate_watermarked_pdf(document, primary_version, link.watermark_text, request, viewer_email)
+                    pdf_buffer = _generate_watermarked_pdf(document, primary_version, effective_watermark_text, request, viewer_email)
                 response = HttpResponse(pdf_buffer, content_type='application/pdf')
                 # Ensure filename has .pdf extension
                 safe_filename, _ = os.path.splitext(get_valid_filename(document.name))
@@ -2831,10 +2875,11 @@ class DataroomFolderDownloadView(APIView):
                 file_path = os.path.join(current_path, get_valid_filename(doc.name))
                 
                 try:
-                    if setting.enable_watermark and link.watermark_text:
+                    if setting.enable_watermark:
+                        effective_watermark_text = get_effective_watermark_text(link)
                         if doc.type == 'image':
                             image_buffer, _ = _generate_watermarked_image(
-                                doc, primary_version, link.watermark_text, request, viewer_email
+                                doc, primary_version, effective_watermark_text, request, viewer_email
                             )
                             # Ensure filename has .jpg extension
                             zipf.writestr(f"{os.path.splitext(file_path)[0]}.jpg", image_buffer.getvalue())
@@ -2842,11 +2887,11 @@ class DataroomFolderDownloadView(APIView):
                             flatten_active = get_dynamic_setting('FLATTEN_WATERMARKED_DOWNLOADS')
                             if flatten_active:
                                 pdf_buffer = _generate_flattened_watermarked_pdf(
-                                    doc, primary_version, link.watermark_text, request, viewer_email
+                                    doc, primary_version, effective_watermark_text, request, viewer_email
                                 )
                             else:
                                 pdf_buffer = _generate_watermarked_pdf(
-                                    doc, primary_version, link.watermark_text, request, viewer_email
+                                    doc, primary_version, effective_watermark_text, request, viewer_email
                                 )
                             # Ensure filename has .pdf extension
                             zipf.writestr(f"{os.path.splitext(file_path)[0]}.pdf", pdf_buffer.getvalue())
@@ -2902,6 +2947,8 @@ class DataroomFolderDownloadView(APIView):
 
         try:
             root_setting = link.dataroom_settings.get(dataroom_folder=root_folder)
+            if not root_setting.is_visible or not _is_dataroom_folder_path_visible(link, root_folder):
+                return Response({"message": "You do not have permission to view or download this folder."}, status=status.HTTP_403_FORBIDDEN)
             if not root_setting.allow_download:
                 return Response({"message": "You are not allowed to download this folder."}, status=status.HTTP_403_FORBIDDEN)
         except ShareLinkDataroomSetting.DoesNotExist:
